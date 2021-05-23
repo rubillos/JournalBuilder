@@ -5,6 +5,9 @@
 # pip3 install exifread
 # pip3 install osxphotos
 
+# time - threads = 20.11
+# time - single thread 31.58
+
 import sys, os, time, shutil, pathlib
 import argparse
 from datetime import datetime
@@ -33,6 +36,7 @@ parser.add_argument("-a", "--album_name", help="Get images from Photos album", n
 group = parser.add_mutually_exclusive_group()
 group.add_argument("-l", "--log_to_console", help="Outout messages to stdout", action="store_true")
 group.add_argument("-lw", "--log_to_window", help="Outout messages to a separate window", action="store_true")
+parser.add_argument("-s", "--single_thread", help="Run all tasks on the main thread", action="store_true")
 parser.add_argument("-j", "--jpeg_quality", help="Set output JPEG quality level ", type=str, choices=["low", "medium", "high", "very_high", "maximum"], default="high")
 parser.add_argument("-w", "--overwrite", help="Overwrite all existing output files", action="store_true")
 parser.add_argument("-wi", "--overwrite_images", help="Overwrite existing output images", action="store_true")
@@ -52,6 +56,8 @@ overwrite_movies = args.overwrite or args.overwrite_movies
 overwrite_assets = args.overwrite or args.overwrite_assets
 
 start_time = time.time()
+
+single_thread = args.single_thread
 
 if args.log_to_window:
 	log_to_console = False
@@ -731,8 +737,12 @@ def main():
 								image = load_image(image, orientation)
 								is_loaded = True
 							new_size = scaled_size(image_size, size)
-							future = executor.submit(save_scaled, image, new_size, output_path)
-							futures_to_label[future] = str(variant_num) if log_to_console else "."
+							if single_thread:
+								save_scaled(image, new_size, output_path)
+								log_print(".", end="", flush=True)
+							else:
+								future = executor.submit(save_scaled, image, new_size, output_path)
+								futures_to_label[future] = str(variant_num) if log_to_console else "."
 						except OSError:
 							log_print("\nCannot save: ", output_path)
 							
@@ -753,9 +763,13 @@ def main():
 								if not is_loaded:
 									image = load_image(image, orientation)
 									is_loaded = True
-								future = executor.submit(save_scaled_header, image, (header_size[0] * scales[i], header_size[1] * scales[i]), header_info[1], output_path)
-								format_str = "h{:d}" if log_to_console else "."
-								futures_to_label[future] = format_str.format(i+1)
+								if single_thread:
+									save_scaled_header(image, (header_size[0] * scales[i], header_size[1] * scales[i]), header_info[1], output_path)
+									log_print(".", end="", flush=True)
+								else:
+									future = executor.submit(save_scaled_header, image, (header_size[0] * scales[i], header_size[1] * scales[i]), header_info[1], output_path)
+									format_str = "h{:d}" if log_to_console else "."
+									futures_to_label[future] = format_str.format(i+1)
 							except OSError:
 								log_print("\nCannot save: ", output_path)
 	
@@ -766,8 +780,6 @@ def main():
 						if task_exception:
 							log_print("Image scaling exception: ", task_exception)
 						log_print(label, end="", flush=True)
-						if log_to_console:
-							log_print("\b"*len(label), end="", flush=True)
 					log_print(".", end="", flush=True)
 					futures_to_label.clear()
 				else:
