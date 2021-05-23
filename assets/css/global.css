@@ -1,0 +1,53 @@
+body { padding: 0px; margin: 0px; font-size: 1em; line-height: 1.4em; color: #555; font-family: "HelveticaNeue-Light", "Helvetica Neue Light", "Helvetica Neue", Helvetica, Arial, Verdana, sans-serif; }
+table, td { border-width:0px; border-spacing: 0px; border-collapse: collapse; padding:0px; vertical-align: top; }
+a { text-decoration: none;}
+img {border: none;}
+h3 { -webkit-margin-after: 0.4em; -webkit-margin-before: 0.4em;}
+p { -webkit-margin-before: 0.4em;}
+
+#page { text-align: justify; margin: 0 auto 0 auto; }
+
+.journal img, gallery .img { border: none; background-color: #888;}
+
+#header { margin: 0 15px; }
+#headerImg img { background-color:#BBB; margin: 0; }
+#headerwidth { width: 805px; height: 1px; display: block; whitespace: pre; }
+#header h1 { font-size: 2.1em; color: #747678; font-weight: lighter; float:left; margin: 0 0 10px; padding: 12px 0 0; }
+
+div.clear { clear: both; }
+
+/* ########## */
+/* ##### GENERAL NAVIGATION STYLES, controls previous & next number menu between pages ##### */
+
+ul#nav { margin: 10px 0 0; font-size: 0.85em; float: left; clear: left; display: inline; list-style: none; background-color: #EEE; padding-left: 15px; padding-right: 15px; }
+ul#nav li { float: left; display: inline; padding: 0 2px; }
+ul#nav li a, ul#nav li a:visited, ul#nav li a:active { text-decoration: none; color:#444; margin:0px 1px 0px 1px; }
+ul#nav li a:hover { color: #444; }
+ul#nav #selection { color: #eee; background-color: #777; padding-top: 5px; padding-bottom: 5px; padding-left: 10px; padding-right: 10px; }
+ul#nav #nonselection { padding-top: 5px; padding-bottom: 5px; padding-left: 10px; padding-right: 10px; }
+ul#nav .index { width:60px;}
+ul#nav .previous { white-space: pre; width: 15px; height: 10px;}
+ul#nav .previous a { padding: 0 4px 0 4px; background: url("../img/previous.gif") no-repeat left center; }
+ul#nav .previous a:hover { background: url("../img/previous_active.gif") no-repeat left center;}
+ul#nav .previous_text {display: none;}
+ul#nav .pageNumber { padding:0 7px 0 2px; }
+ul#nav .pagnation { padding: 0 3px 0 3px; }
+ul#nav .next { white-space: pre; width: 15px; height: 10px}
+ul#nav .next a { padding: 0 4px 0 4px; background: url("../img/next.gif") no-repeat right center;}
+ul#nav .next a:hover { background: url("../img/next_active.gif") no-repeat right center;}
+ul#nav .next_text {display: none;}
+
+.detail #nav { margin: 0 auto 0 auto; }
+
+#content { clear: left; margin: 15px; padding: 0; }
+
+.imagediv { width: 200px; padding-right: 15px; text-align: center; margin-bottom: 15px; }
+.imagelabel { font-family: 'HelveticaNeue-Light', 'Helvetica Neue Light', 'Helvetica Neue', Helvetica, Arial, Verdana, sans-serif; font-size:12px; color: #636466; line-height:15px; text-align: left; }
+.imagecell { margin: 0; padding: 0; text-align: center; background-color:#eee; vertical-align: bottom; }
+.imagecell img, .imagecell object { vertical-align: bottom; }
+
+.journaltitle .text { width:592px; font-size:2.1em; color:#888; margin: 0; padding: 0; }
+.journaltext .text { width:592px; font-size:1.1em; line-height: 1.2em; color:#555; margin: 0; padding: 0; }
+
+#footer { padding: 0; margin: 0 15px 15px 15px; list-style: none; }
+#footer p { font-size:.8em; color:#888; margin:0; padding: 0; }
