@@ -7,6 +7,8 @@
 
 # time - threads = 20.11
 # time - single thread 31.58
+# time - threaded by image 5.66
+# time - process by image 6.56
 
 import sys, os, time, shutil, pathlib
 import argparse
@@ -15,6 +17,7 @@ from PIL import Image
 import pyheif
 import exifread
 import concurrent.futures
+# import pprint
 
 import queue
 import logging
@@ -58,6 +61,15 @@ overwrite_assets = args.overwrite or args.overwrite_assets
 start_time = time.time()
 
 single_thread = args.single_thread
+
+thumb_size = 190
+base_image_size = 1024
+header_height = 225
+
+script_path = os.path.abspath(os.path.dirname(sys.argv[0]))
+journal_folder = args.folder
+
+images_path = os.path.join(journal_folder, "images")
 
 if args.log_to_window:
 	log_to_console = False
@@ -175,7 +187,90 @@ def save_scaled_header(image, size, offset, path):
 	cropped_image = image.resize(size, box=(0, src_top, image.size[0], src_top+src_slice_height), resample=Image.LANCZOS)
 	cropped_image.save(path, "JPEG", quality=args.jpeg_quality)
 	return True
-	
+
+
+def save_versions(image_refs, ref_index, image_folders, page_headers, page_width):
+	result = 0
+	error_msg = ""
+	new_keys = None
+	image_ref = image_refs[ref_index]
+	filepath = image_ref["file_path"]
+	try:
+		im = None
+		is_heif = False
+
+		if pathlib.Path(filepath).suffix.lower() in ['.heif',  '.heic']:
+			heif_file = pyheif.read(filepath)
+			image = Image.frombytes(heif_file.mode, heif_file.size,
+									heif_file.data, "raw", heif_file.mode, heif_file.stride,)
+			is_heif = True
+		else:
+			image = Image.open(filepath)
+
+		if image:
+			is_loaded = False
+			image_size = image.size
+			orientation = 0
+
+			if not is_heif:
+				orientation = image_ref["orientation"]
+				if orientation == 6 or orientation == 8:
+					image_size = (image_size[1], image_size[0])
+
+			width, height = scaled_size(image_size, 1024)
+
+			new_keys = {}
+			new_keys["width@1x"] = width
+			new_keys["height@1x"] = height
+			new_keys["thumb_name"] = "thumb-" + image_ref["picture_num"] + ".jpg"
+			new_keys["picture_name"] = "picture-" + image_ref["picture_num"] + ".jpg"
+			new_keys["image_size"] = image_size
+
+			for folder_name, name_root, size in image_folders:
+				output_path = os.path.join(journal_folder, folder_name, name_root + image_ref["picture_num"]) + ".jpg"
+
+				if overwrite_images or not os.path.isfile(output_path):
+					try:
+						if not is_loaded:
+							image = load_image(image, orientation)
+							is_loaded = True
+						new_size = scaled_size(image_size, size)
+						save_scaled(image, new_size, output_path)
+						result = result + 1 if result>=0 else result
+					except OSError:
+						result = -1
+						error_msg = "Cannot save: " + output_path
+
+				filename = image_ref["file_name"]
+				header_info = None
+				if len(page_headers) > 0:
+					header_info = next(filter(lambda head_item: head_item[0] and head_item[0]["file_name"] == filename, page_headers), None)
+
+				if header_info and header_info[0]:
+					header_size = (page_width, header_height)
+					scales = [1, 2, 3]
+					suffixes = ["", "@2x", "@3x"]
+					for i in range(3):
+						output_path = os.path.join(journal_folder, header_image_url(header_info[2], suffixes[i]))
+						if overwrite_headers or not os.path.isfile(output_path):
+							try:
+								if not is_loaded:
+									image = load_image(image, orientation)
+									is_loaded = True
+								save_scaled_header(image, (header_size[0] * scales[i], header_size[1] * scales[i]), header_info[1], output_path)
+								result = result + 1 if result >= 0 else result
+							except OSError:
+								result = -1
+								error_msg = "Cannot save: " + output_path
+		else:
+			result = -1
+			error_msg = "Cannot open: " + filepath
+	except OSError:
+		result = -1
+		error_msg = "Error generating images"
+
+	return(result, error_msg, new_keys, ref_index)
+
 def replace_keys(lines, src_key, replace_key):
 	for index, line in enumerate(lines):
 		if src_key in line:
@@ -392,17 +487,15 @@ def load_image(image, orientation):
 		image.load()
 	return image
 
+def add_keys_to_dict(src_dict, dest_dict):
+	for key, value in src_dict.items():
+		dest_dict[key] = value
 
 def main():
-	thumb_size = 190
-	base_image_size = 1024
-	header_height = 225
-	
-	script_path = os.path.abspath(os.path.dirname(sys.argv[0]))
-	journal_folder = args.folder
-	
-	images_path = os.path.join(journal_folder, "images")
-	
+	global thumb_size
+	global base_image_size
+	global header_height
+
 	image_refs = []
 
 	# read journal file
@@ -446,7 +539,7 @@ def main():
 				else:
 					log_print("File missing for", photo.filename)
 		else:
-			log_print("Photos album not found:", photos_album_name)
+			log_print("Photos album not found:", args.album_name)
 			quit()
 	else:
 		for filename in os.listdir(images_path):
@@ -691,107 +784,35 @@ def main():
 	if log_to_console:
 		log_print("[{}]{}".format(" "*image_count, "\b"*(image_count+1)), end="", flush=True)
 	
-	futures_to_label = {}
+	futures = []
 	
 	image_save_start = time.time()
 	
-	for image_ref in final_image_refs:
-		filepath = image_ref["file_path"]
-		try:
-			im = None
-			is_heif = False
-			
-			if pathlib.Path(filepath).suffix.lower() in [ '.heif',  '.heic' ]:
-				heif_file = pyheif.read(filepath)
-				image = Image.frombytes(heif_file.mode, heif_file.size, heif_file.data, "raw", heif_file.mode, heif_file.stride,)
-				is_heif = True
-			else:
-				image = Image.open(filepath)
-				
-			if image:
-				is_loaded = False
-				image_size = image.size
-				orientation = 0
+	for ref_index in range(len(final_image_refs)):
+		if single_thread:
+			result = save_versions(final_image_refs, ref_index, image_folders, page_headers, page_width)
+			add_keys_to_dict(result[2], final_image_refs[result[3]])
+			log_print(".", end="", flush=True)
+		else:
+			future = executor.submit(save_versions, final_image_refs, ref_index, image_folders, page_headers, page_width)
+			futures.append(future)
 
-				if not is_heif:
-					orientation = image_ref["orientation"]
-					if orientation == 6 or orientation == 8:
-						image_size =  (image_size[1], image_size[0])
-			
-				width, height = scaled_size(image_size, 1024)
-				
-				image_ref["width@1x"] = width
-				image_ref["height@1x"] = height
-				image_ref["thumb_name"] = "thumb-" + image_ref["picture_num"] + ".jpg"
-				image_ref["picture_name"] = "picture-" + image_ref["picture_num"] + ".jpg"
-				image_ref["image_size"] = image_size
-				
-				variant_num = 1
-				did_save = 0
-				for folder_name, name_root, size in image_folders:
-					output_path = os.path.join(journal_folder, folder_name, name_root + image_ref["picture_num"]) + ".jpg"
-						
-					if overwrite_images or not os.path.isfile(output_path):
-						try:
-							if not is_loaded:
-								image = load_image(image, orientation)
-								is_loaded = True
-							new_size = scaled_size(image_size, size)
-							if single_thread:
-								save_scaled(image, new_size, output_path)
-								log_print(".", end="", flush=True)
-							else:
-								future = executor.submit(save_scaled, image, new_size, output_path)
-								futures_to_label[future] = str(variant_num) if log_to_console else "."
-						except OSError:
-							log_print("\nCannot save: ", output_path)
-							
-					variant_num = variant_num+1
-				
-				filename = image_ref["file_name"]
-				header_info = None
-				if len(page_headers) > 0:
-					header_info = next(filter(lambda head_item: head_item[0] and head_item[0]["file_name"] == filename, page_headers), None)
-				if header_info and header_info[0]:
-					header_size = (page_width, header_height)
-					scales = [1, 2, 3]
-					suffixes = ["", "@2x", "@3x"]
-					for i in range(3):
-						output_path = os.path.join(journal_folder, header_image_url(header_info[2], suffixes[i]))
-						if overwrite_headers or not os.path.isfile(output_path):
-							try:
-								if not is_loaded:
-									image = load_image(image, orientation)
-									is_loaded = True
-								if single_thread:
-									save_scaled_header(image, (header_size[0] * scales[i], header_size[1] * scales[i]), header_info[1], output_path)
-									log_print(".", end="", flush=True)
-								else:
-									future = executor.submit(save_scaled_header, image, (header_size[0] * scales[i], header_size[1] * scales[i]), header_info[1], output_path)
-									format_str = "h{:d}" if log_to_console else "."
-									futures_to_label[future] = format_str.format(i+1)
-							except OSError:
-								log_print("\nCannot save: ", output_path)
-	
-				if len(futures_to_label)>0:
-					for future in concurrent.futures.as_completed(futures_to_label, timeout=None):
-						label = futures_to_label[future]
-						task_exception = future.exception()
-						if task_exception:
-							log_print("Image scaling exception: ", task_exception)
-						log_print(label, end="", flush=True)
-					log_print(".", end="", flush=True)
-					futures_to_label.clear()
-				else:
-					log_print("x", end="", flush=True)
-
-				image.close()
-				
+	if len(futures)>0:
+		for future in concurrent.futures.as_completed(futures, timeout=None):
+			task_exception = future.exception()
+			if task_exception:
+				log_print("Image scaling exception: ", task_exception)
+			result = future.result()
+			if result[0] >= 0:
+				add_keys_to_dict(result[2], final_image_refs[result[3]])
+			if result[0] < 0:
+				log_print("Image Save Error:", result[1])
+			elif result[0] == 0:
+				log_print("x", end="", flush=True)
 			else:
-				log_print("Unable to open: ", filepath)
-				
-		except OSError:
-			log_print("Error opening: ", filepath)
+				log_print(".", end="", flush=True)
+	elif log_to_console:
+		log_print("x", end="", flush=True)
 	
 	log_print()
 	image_save_time = time.time() - image_save_start
@@ -809,6 +830,7 @@ def main():
 	detail_count = len(final_image_refs)
 	
 	log_print("Creating {:d} Detail pages ".format(detail_count), end="", flush=True)
+
 	if log_to_console:
 		log_print("[{}]{}".format(" "*detail_count, "\b"*(detail_count+1)), end="", flush=True)
 	
