@@ -25,20 +25,16 @@ import signal
 import threading
 import tkinter as tk
 from tkinter.scrolledtext import ScrolledText
-from tkinter import ttk, VERTICAL, HORIZONTAL, N, S, E, W, SE
-from tkinter import font
-from tkinter import Button
-from tkinter import Frame
-# from tkinter.ttk import *
+from tkinter import ttk, VERTICAL, HORIZONTAL, N, S, E, W, SE, font, Button, Frame
 
-parser = argparse.ArgumentParser("")
+parser = argparse.ArgumentParser(description='Generate a web journal')
 logger = logging.getLogger(__name__)
 
-parser.add_argument("folder", help="Folder containing source files")
-parser.add_argument("-a", "--album_name", help="Get images from Photos album", nargs='?')
-group = parser.add_mutually_exclusive_group()
-group.add_argument("-l", "--log_to_console", help="Outout messages to stdout", action="store_true")
-group.add_argument("-lw", "--log_to_window", help="Outout messages to a separate window", action="store_true")
+parser.add_argument("folder", help="Folder containing source files", nargs="?")
+parser.add_argument("-d", "--documentation", help="Print user manual", action="store_true")
+parser.add_argument("-a", "--album_name", help="Get images from Photos album", nargs=1)
+parser.add_argument("-l", "--log_to_console", help="Outout messages to stdout", action="store_true")
+parser.add_argument("-lw", "--log_to_window", help="Outout messages to a separate window", action="store_true")
 parser.add_argument("-s", "--single_thread", help="Run all tasks on the main thread", action="store_true")
 parser.add_argument("-j", "--jpeg_quality", help="Set output JPEG quality level ", type=str, choices=["low", "medium", "high", "very_high", "maximum"], default="high")
 parser.add_argument("-w", "--overwrite", help="Overwrite all existing output files", action="store_true")
@@ -52,24 +48,34 @@ parser.add_argument("-t", "--timings", help="Print timing information", action="
 	
 args = parser.parse_args()
 
+script_path = os.path.abspath(os.path.dirname(sys.argv[0]))
+
+if args.documentation:
+	with open(os.path.join(script_path, "journal.md"), "r") as file:
+		for line in file.readlines():
+			print(line, end="")
+	quit()
+
+if args.folder:
+	journal_folder = args.folder
+else:
+	parser.error("a destination folder path is required")
+
+images_path = os.path.join(journal_folder, "images")
+
 overwrite_images = args.overwrite or args.overwrite_images
 overwrite_headers = args.overwrite or args.overwrite_headerimages
 overwrite_pages = args.overwrite or args.overwrite_pages
 overwrite_movies = args.overwrite or args.overwrite_movies
 overwrite_assets = args.overwrite or args.overwrite_assets
 
-start_time = time.time()
-
 single_thread = args.single_thread
+
+start_time = time.time()
 
 thumb_size = 190
 base_image_size = 1024
 header_height = 225
-
-script_path = os.path.abspath(os.path.dirname(sys.argv[0]))
-journal_folder = args.folder
-
-images_path = os.path.join(journal_folder, "images")
 
 if args.log_to_window:
 	log_to_console = False
@@ -115,7 +121,7 @@ class ConsoleUi:
 		
 		self.log_queue = queue.Queue()
 		self.queue_handler = QueueHandler(self.log_queue)
-		logger.propagate = False;
+		logger.propagate = False
 		logger.addHandler(self.queue_handler)
 		self.frame.after(100, self.poll_log_queue)
 		
@@ -162,9 +168,7 @@ def log_print(*args,**kwargs):
 		logger.log(logging.INFO, message)
 
 def scaled_size(input_size, max_size):
-	width = input_size[0]
-	height = input_size[1]
-	
+	width, height = input_size
 	max_size = min(max_size, max(width, height))
 	
 	if (width > height):
@@ -179,15 +183,12 @@ def scaled_size(input_size, max_size):
 def save_scaled(image, size, path):
 	scaled_image = image.resize(size, resample=Image.LANCZOS)
 	scaled_image.save(path, "JPEG", quality=args.jpeg_quality)
-	return True
 	
 def save_scaled_header(image, size, offset, path):
 	src_slice_height = int(image.size[1] * size[0] / image.size[0])
 	src_top = int((image.size[1]-src_slice_height) * offset / 100)
 	cropped_image = image.resize(size, box=(0, src_top, image.size[0], src_top+src_slice_height), resample=Image.LANCZOS)
 	cropped_image.save(path, "JPEG", quality=args.jpeg_quality)
-	return True
-
 
 def save_versions(image_refs, ref_index, image_folders, page_headers, page_width):
 	result = 0
@@ -196,13 +197,12 @@ def save_versions(image_refs, ref_index, image_folders, page_headers, page_width
 	image_ref = image_refs[ref_index]
 	filepath = image_ref["file_path"]
 	try:
-		im = None
+		image = None
 		is_heif = False
 
 		if pathlib.Path(filepath).suffix.lower() in ['.heif',  '.heic']:
 			heif_file = pyheif.read(filepath)
-			image = Image.frombytes(heif_file.mode, heif_file.size,
-									heif_file.data, "raw", heif_file.mode, heif_file.stride,)
+			image = Image.frombytes(heif_file.mode, heif_file.size, heif_file.data, "raw", heif_file.mode, heif_file.stride,)
 			is_heif = True
 		else:
 			image = Image.open(filepath)
@@ -227,7 +227,7 @@ def save_versions(image_refs, ref_index, image_folders, page_headers, page_width
 			new_keys["image_size"] = image_size
 
 			for folder_name, name_root, size in image_folders:
-				output_path = os.path.join(journal_folder, folder_name, name_root + image_ref["picture_num"]) + ".jpg"
+				output_path = os.path.join(journal_folder, folder_name, picture_url(image_ref["picture_num"]))
 
 				if overwrite_images or not os.path.isfile(output_path):
 					try:
@@ -361,11 +361,9 @@ def add_images_before_date(refs, before_date, dest_list, index_page_num):
 			refs.clear()
 
 def index_of_substring(list, substr, start=0):
-	index = start
-	while index < len(list):
-		if substr in list[index]:
+	for index, item in enumerate(list):
+		if substr in item:
 			return index
-		index = index + 1
 	return -1
 
 def extract_section(lines, starttext, endtext):
@@ -391,6 +389,9 @@ def index_url(index_num):
 		
 def header_image_url(page_num, suffix=""):
 	return "{} - {:d}{}.jpg".format(header_name_root, page_num, suffix)
+
+def picture_url(page_num):
+	return "{}{}.jpg".format(header_name_root, page_num)
 
 def make_nav_bar(nav_lines, page_index, page_names):
 	nav_count = len(page_names)
@@ -449,11 +450,10 @@ def make_photo_block(photo_lines, image_refs, thumb_size):
 			row_count = 0
 		
 		new_image_lines = image_lines.copy()
-		
 		new_size = scaled_size(image_ref["image_size"], thumb_size)
 		
 		replace_keys(new_image_lines, "_DetailPageURL_", detail_root + image_ref["picture_num"] + ".html")
-		replace_keys(new_image_lines, "_ThumbURL_", thumb_name_root + image_ref["picture_num"] + ".jpg")
+		replace_keys(new_image_lines, "_ThumbURL_", picture_url(image_ref["picture_num"]))
 		replace_keys(new_image_lines, "_ThumbWidth_", str(new_size[0]))
 		replace_keys(new_image_lines, "_ThumbHeight_", str(new_size[1]))
 		
@@ -471,10 +471,7 @@ def make_photo_block(photo_lines, image_refs, thumb_size):
 	return photo_lines
 
 def pluralize(str, count):
-	if count==1:
-		return str
-	else:
-		return str+"s"
+	return str if count==1 else str+"s"
 
 def load_image(image, orientation):
 	if orientation == 3:
@@ -502,10 +499,10 @@ def main():
 	with open(os.path.join(journal_folder, "journal.txt"), "r") as file:
 		journal_src = file.readlines()
 		
-	#scan for date overrides
+	# scan for date overrides
 	date_overrides = {}
 	journal_copy = journal_src.copy()
-	while len(journal_copy) > 0:
+	while len(journal_copy)>0:
 		tag, subtag, text = get_next_line(journal_copy)
 		if tag == "Date":
 			date_overrides[subtag] = text
@@ -524,10 +521,10 @@ def main():
 	
 	# read the file list, get the file info
 	file_scan_start = time.time()
-	file_paths = []
-	
 	photo_list_start = time.time()
-	
+
+	file_paths = []
+
 	if from_photos:
 		photosdb = osxphotos.PhotosDB()
 		album_info = next(filter(lambda info: info.title == args.album_name, photosdb.album_info), None)
@@ -553,7 +550,6 @@ def main():
 			with open(filepath, "rb") as image_file:
 				tags = exifread.process_file(image_file, details=False)
 				keys = tags.keys()
-	
 				image_ref = {}
 	
 				image_ref["file_name"] = filename
@@ -571,7 +567,6 @@ def main():
 				
 				image_ref["datetime"] = image_date
 				image_ref["image_date"] = date_from_string(image_date)
-				
 				image_ref["orientation"] = tags['Image Orientation'].values[0] if 'Image Orientation' in keys else 0
 
 				if title:
@@ -595,7 +590,6 @@ def main():
 					exif_data.append(tags['Image Make'].values + " " + tags['Image Model'].values)
 					
 				image_ref["exif"] = " &bull; ".join(exif_data)
-				
 				image_refs.append(image_ref)
 
 	file_scan_time = time.time() - file_scan_start
@@ -630,7 +624,6 @@ def main():
 				text = "Epilog"
 				add_images_before_date(image_refs, None, last_entries if last_entries and len(entries) == 0 else entries, index_page_num-1)
 			page = { "Title": text, "Entries": entries }
-			
 			tag_parts = subtag.split(",")
 			header_ref = None
 			header_offset = 50
@@ -685,31 +678,26 @@ def main():
 	
 	# merge movie entries
 	for page in pages:
-		index = 0
-		entries = page["Entries"]
-		while index < len(entries):
-			entry = entries[index]
+		for index, entry in enumerate(page["Entries"]):
 			if "Movie" in entry:
 				movie_list = [ entry["Movie"] ]
 				entries[index] = { "Photos": movie_list }
 				while index < len(entries)-1 and "Movie" in entries[index+1]:
 					next_movie = entries.pop(index+1)
 					movie_list.append(next_movie["Movie"])
-			index = index + 1
 	
 	#build the image list
 	final_image_refs = []
 	for page in pages:
 		for entry in page["Entries"]:
 			if "Photos" in entry:
-					final_image_refs.extend(entry["Photos"])
+				final_image_refs.extend(entry["Photos"])
 	
 	# set the target image names
-	image_num = 1
-	for image_ref in final_image_refs:
-		image_ref["picture_num"] = str(image_num)
-		image_num = image_num + 1
+	for image_index, image_ref in enumerate(final_image_refs):
+		image_ref["picture_num"] = str(image_index+1)
 	
+	# start output phase
 	journal_scan_time = time.time() - journal_scan_start
 	
 	image_folders = [
@@ -734,10 +722,10 @@ def main():
 			if name.startswith(thumb_folder_root) or name.startswith(picture_folder_root) or name=="assets":
 				log_print(".", end="", flush=True)
 				shutil.rmtree(path)
-				folders_removed = folders_removed + 1
+				folders_removed -= 1
 			elif name.startswith(thumb_name_root) or name.startswith(picture_name_root) or name.startswith(header_name_root) or name.startswith(index_root) or name.startswith(detail_root) or name=="movies.txt":
 				log_print(".", end="", flush=True)
-				files_removed = files_removed + 1
+				files_removed += 1
 				os.remove(path)
 		log_print()
 		log_print("Removed", folders_removed, pluralize("folder", folders_removed), "and", files_removed, pluralize("file", files_removed))
@@ -888,7 +876,7 @@ def main():
 		if not did_save:
 			log_print("x", end="", flush=True)
 	
-		page_number = page_number + 1
+		page_number += 1
 		
 	log_print()
 	
@@ -952,7 +940,6 @@ def main():
 		else:
 			index_name = "{}{:d}.html".format(index_root, page_index)
 	
-		entry_index = 0
 		entries = page["Entries"]
 		new_lines = []
 	
@@ -981,14 +968,14 @@ def main():
 		dest_index = text_index
 		for line in new_lines:
 			new_index_lines.insert(dest_index, line)
-			dest_index = dest_index + 1
+			dest_index += 1
 			
 		if page_count > 1:
 			new_nav_lines = make_nav_bar(nav_lines.copy(), page_index, page_names)
 			dest_index = nav_index
 			for line in new_nav_lines:
 				new_index_lines.insert(dest_index, line)
-				dest_index = dest_index + 1
+				dest_index += 1
 	
 		remove_tag(new_index_lines, "rkid")
 		remove_tag(new_index_lines, "removeonfirstpage")
@@ -1009,7 +996,7 @@ def main():
 		if not did_save:
 			log_print("x", end="", flush=True)
 			
-		page_index = page_index + 1
+		page_index += 1
 	
 	log_print()
 	
@@ -1045,7 +1032,7 @@ if __name__ == '__main__':
 	
 		root = tk.Tk()
 		root.geometry("800x400")
-		root.title('Logging Handler')
+		root.title('Journal Builder')
 		root.columnconfigure(0, weight=1)
 		root.rowconfigure(0, weight=1)
 		console_frame = ttk.Frame(root)
