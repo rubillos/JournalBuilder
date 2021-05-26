@@ -11,24 +11,23 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "args": [
-                // "/Users/randy/Sites/PortlandAve/travel/Test",
-                // "-l",
-                // "-c",
-                // "-t"
+                "/Users/randy/Sites/PortlandAve/travel/Test",
+            //    "-c",
+                "-wp",
+                "-t"
 
-                "/Users/randy/Sites/PortlandAve/Local/2021-05-13-JimAndKatie",
-                "-a",
-                "2021-05-13 Jim & Katie",
-                "-l",
-                "-c",
-                "-t",
-                "-n",
-                "-f",
-                "-d",
-                "-jt",
-                "Jim & Katie (and Ellie & Jake) Visit - May 2021",
-                "-ts",
-                "210"
+                // "/Users/randy/Sites/PortlandAve/Local/2021-05-13-JimAndKatie",
+                // "-a",
+                // "2021-05-13 Jim & Katie",
+                // "-c",
+                // "-t",
+                // "-n",
+                // "-f",
+                // "-d",
+                // "-jt",
+                // "Jim & Katie (and Ellie & Jake) Visit - May 2021",
+                // "-ts",
+                // "210"
             ]
         }
     ]

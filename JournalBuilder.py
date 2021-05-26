@@ -14,19 +14,15 @@ import exifread
 import concurrent.futures
 import html  
 
-import queue,logging, signal
-import tkinter as tk
-from tkinter.scrolledtext import ScrolledText
-from tkinter import ttk, VERTICAL, HORIZONTAL, N, S, E, W, SE, font, Button, Frame
-
 parser = argparse.ArgumentParser(description='Generate a web journal')
-logger = logging.getLogger(__name__)
 
 parser.add_argument("folder", help="Folder containing source files", nargs="?")
 parser.add_argument("-?", dest="documentation", help="Show user manual", action="store_true")
 
 group = parser.add_argument_group("album settings")
+group.add_argument("-j", dest="journal", help="journal information file (defaults to 'journal.txt')", type=str, nargs=1)
 group.add_argument("-a", dest="album_name", help="Get images from Photos album", type=str, nargs=1)
+group.add_argument("-i", dest="images_folder", help="Source image folder (defaults to 'images')", type=str, nargs=1)
 group.add_argument("-d", dest="date_sort", help="Show images in chronological order (Photos album only)", action="store_true")
 group.add_argument("-f", dest="favorites", help="Show only favorite images (Photos album only)", action="store_true")
 
@@ -35,7 +31,7 @@ group.add_argument("-jt", dest="journal_title", help="Journal title", type=str, 
 group.add_argument("-ts", dest="thumb_size", help="Thumbnail size", type=int, nargs=1, default=[190])
 group.add_argument("-is", dest="image_size", help="Base image size", type=int, nargs=1, default=[1024])
 group.add_argument("-hh", dest="header_height", help="Header height", type=int, nargs=1, default=[225])
-group.add_argument("-j", dest="jpeg_quality", help="Set output JPEG quality level ", type=str, choices=["low", "medium", "high", "very_high", "maximum"], default="high")
+group.add_argument("-q", dest="jpeg_quality", help="Set output JPEG quality level ", type=str, choices=["low", "medium", "high", "very_high", "maximum"], default="high")
 
 group = parser.add_argument_group("overwriting")
 group.add_argument("-w", dest="overwrite", help="Overwrite all existing output files", action="store_true")
@@ -47,8 +43,6 @@ group.add_argument("-wa", dest="overwrite_assets", help="Overwrite existing asse
 
 parser.add_argument("-c", dest="clean", help="Remove all existing output files", action="store_true")
 parser.add_argument("-t", dest="timings", help="Print timing information", action="store_true")
-parser.add_argument("-l", dest="log_to_console", help="Outout messages to stdout", action="store_true")
-parser.add_argument("-lw", dest="log_to_window", help="Outout messages to a separate window", action="store_true")
 parser.add_argument("-s", dest="single_thread", help="Run all tasks on the main thread", action="store_true")
 
 args = parser.parse_args()
@@ -76,20 +70,12 @@ single_thread = args.single_thread
 
 start_time = time.time()
 
+previous_external_url = None
+next_external_url = None
+
 thumb_size = args.thumb_size[0]
 base_image_size = args.image_size[0]
 header_height = args.header_height[0]
-
-if args.log_to_window:
-	log_to_console = False
-else:
-	log_to_console = args.log_to_console
-	if not log_to_console:
-		try:
-		    if sys.stdin.isatty():
-		        log_to_console = True
-		except AttributeError:
-		    pass
 
 from_photos = True if args.album_name else False
 
@@ -105,70 +91,6 @@ index_root = "index"
 detail_root = "large-"
 
 jpeg_quality = {"low":"web_low", "medium":"web_medium", "high":"web_high", "very_high":"web_very_high", "maximum":"web_maximum"}
-
-class QueueHandler(logging.Handler):
-	def __init__(self, log_queue):
-		super().__init__()
-		self.log_queue = log_queue
-	def emit(self, record):
-		self.log_queue.put(record)
-        
-class ConsoleUi:
-	def __init__(self, frame):
-		self.frame = frame
-		self.scrolled_text = ScrolledText(frame, state='disabled', height=14, bg='black', fg='green', highlightthickness=0, padx=2, pady=2)
-		self.scrolled_text.grid(row=0, column=0, sticky=(N, S, W, E))
-		
-		text_font = font.Font(family= '.SF NS Mono', size=14, weight='bold')
-		self.scrolled_text.configure(font=text_font)
-		
-		self.log_queue = queue.Queue()
-		self.queue_handler = QueueHandler(self.log_queue)
-		logger.propagate = False
-		logger.addHandler(self.queue_handler)
-		self.frame.after(100, self.poll_log_queue)
-		
-	def get_text(self):
-		return self.scrolled_text
-
-	def display(self, record):
-		msg = self.queue_handler.format(record)
-		self.scrolled_text.configure(state='normal')
-		self.scrolled_text.insert(tk.END, msg, record.levelname)
-		self.scrolled_text.configure(state='disabled')
-		self.scrolled_text.yview(tk.END)
-
-	def poll_log_queue(self):
-		while True:
-			try:
-				record = self.log_queue.get(block=False)
-			except queue.Empty:
-				break
-			else:
-				self.display(record)
-		self.frame.after(100, self.poll_log_queue)
-
-def log_print(*args,**kwargs):
-	message = None
-	end_str = kwargs["end"] if "end" in kwargs else "\n"
-	flush_val = kwargs["flush"] if "flush" in kwargs else False
-
-	for item in args:
-		str_item = str(item)
-		if len(str_item)>0:
-			if message != None:
-				message = message + " " + str_item
-			else:
-				message = str_item
-			
-	if message == None:
-		message = ""
-	if log_to_console:
-		print(message, end=end_str, flush=flush_val)
-	else:
-		if len(end_str)>0:
-			message = message+end_str
-		logger.log(logging.INFO, message)
 
 def scaled_size(input_size, max_size):
 	width, height = input_size
@@ -347,7 +269,7 @@ def date_from_string(date_string):
 				try:
 					date_time = datetime.strptime(date_string, "%Y-%m-%d")
 				except:
-					log_print("Failed to parse date", date_string)
+					print("Failed to parse date", date_string)
 	
 	return date_time
 
@@ -389,9 +311,13 @@ def extract_section(lines, starttext, endtext):
 	else:
 		return (index, lines.pop(index))
 
-def index_url(index_num):
-	if (index_num == 1):
+def index_url(index_num, num_indexes):
+	if index_num == 0:
+		return previous_external_url if previous_external_url else None
+	elif index_num == 1:
 		return "index.html"
+	elif index_num == num_indexes+1:
+		return next_external_url if next_external_url else None
 	else:
 		return "index{}.html".format(index_num)
 		
@@ -406,30 +332,38 @@ def make_nav_bar(nav_lines, page_index, page_names):
 	selected_index, selected_line = extract_section(nav_lines, 'rkid="off"', None)
 	un_selected_index, un_selected_line = extract_section(nav_lines, 'rkid="on"', None)
 
-	replace_keys(nav_lines, "_NextPageURL_", index_url(page_index+1))
-	replace_keys(nav_lines, "_PreviousPageURL_", index_url(page_index-1))
+	next_url = index_url(page_index+1, nav_count)
+	prev_url = index_url(page_index-1, nav_count)
 	
 	for i in range(0, nav_count):
 		if i+1 == page_index:
 			nav_item = selected_line
 		else:
-			nav_item = un_selected_line.replace("_IndexPageURL_", index_url(i+1))
+			nav_item = un_selected_line.replace("_IndexPageURL_", index_url(i+1, nav_count))
 		
 		nav_item = nav_item.replace("_PageName_", page_names[i])
 		
 		nav_lines.insert(selected_index, nav_item)
 		selected_index = selected_index + 1
 
-	if page_index == 1:
-		remove_lines_with_key(nav_lines, "removeonfirstpage")
-	else:
+	if prev_url:
+		replace_keys(nav_lines, "_PreviousPageURL_", prev_url)
 		remove_lines_with_key(nav_lines, "leaveonfirstpage")
-		
-	if page_index == nav_count:
-		remove_lines_with_key(nav_lines, "removeonlastpage")
 	else:
-		remove_lines_with_key(nav_lines, "leaveonlastpage")
+		if page_index == 1:
+			remove_lines_with_key(nav_lines, "removeonfirstpage")
+		else:
+			remove_lines_with_key(nav_lines, "leaveonfirstpage")
 		
+	if next_url:
+		replace_keys(nav_lines, "_NextPageURL_", next_url)
+		remove_lines_with_key(nav_lines, "leaveonlastpage")
+	else:
+		if page_index == nav_count:
+			remove_lines_with_key(nav_lines, "removeonlastpage")
+		else:
+			remove_lines_with_key(nav_lines, "leaveonlastpage")
+
 	remove_tag(nav_lines, "removeonfirstpage")
 	remove_tag(nav_lines, "leaveonfirstpage")
 	remove_tag(nav_lines, "removeonlastpage")
@@ -500,6 +434,8 @@ def add_keys_to_dict(src_dict, dest_dict):
 		dest_dict[key] = value
 
 def main():
+	global previous_external_url
+	global next_external_url
 	global thumb_size
 	global base_image_size
 	global header_height
@@ -507,7 +443,9 @@ def main():
 	image_refs = []
 
 	# read journal file
-	journal_file_path = os.path.join(journal_folder, "journal.txt")
+	journal_file_path = args.journal if args.journal else "journal.txt"
+	if not "/" in journal_file_path:
+		journal_file_path = os.path.join(journal_folder, journal_file_path)
 	if os.path.isfile(journal_file_path):
 		with open(journal_file_path, "r") as file:
 			journal_src = file.readlines()
@@ -550,19 +488,19 @@ def main():
 					if photo_path != None:
 						file_paths.append((photo.original_filename, photo_path, photo.title))
 					else:
-						log_print("File missing for", photo.filename)
+						print("File missing for", photo.filename)
 		else:
-			log_print("Photos album not found:", args.album_name)
-			quit()
+			parser.error("Photos album not found: " + args.album_name)
 	else:
-		images_path = os.path.join(journal_folder, "images")
+		images_path = args.images_folder if args.images_folder else "images"
+		if not "/" in images_path:
+			images_path = os.path.join(journal_folder, images_path)
 		if os.path.isdir(images_path):
 			for filename in os.listdir(images_path):
 				file_paths.append((filename, os.path.join(images_path, filename), None))
 			
 	if len(file_paths) == 0:
-		log_print("No photos found!")
-		quit()
+		parser.error("No source photos found! Please specify an album name (-a) or an image folder (-i).")
 
 	photo_list_time = time.time() - photo_list_start
 		
@@ -584,7 +522,7 @@ def main():
 					else:
 						file_time = os.path.getmtime(filepath)
 						image_date = time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(file_time))
-						log_print("Using os date for", filename, image_date)
+						print("Using os date for", filename, image_date)
 				
 				image_ref["datetime"] = image_date
 				image_ref["image_date"] = date_from_string(image_date)
@@ -629,8 +567,6 @@ def main():
 	last_entries = None
 	movie_refs = []
 	index_page_num = 0
-	previous_external_url = None
-	next_external_url = None
 
 	journal_scan_start = time.time()
 
@@ -659,9 +595,9 @@ def main():
 							header_offset = int(tag_parts[1])
 							page["HeaderOffset"] = header_offset
 					else:
-						log_print("Header image not found:", tag_parts[0])
+						print("Header image not found:", tag_parts[0])
 				except:
-					log_print("Header image not found:", tag_parts[0])
+					print("Header image not found:", tag_parts[0])
 					
 			page_headers.append((header_ref, header_offset, index_page_num))
 			pages.append(page)
@@ -693,7 +629,7 @@ def main():
 			if caption_ref:
 				caption_ref["caption"] = text
 			else:
-				log_print("Image for caption not found:", subtag)
+				print("Image for caption not found:", subtag)
 	
 	if len(pages) == 0 and args.album_name:
 		name = args.journal_title[0] if args.journal_title else args.album_name[0]
@@ -704,10 +640,6 @@ def main():
 		pages.append(page)
 		page_names.append(name)
 		index_page_num = 1
-
-	if len(pages) == 0 and args.album_name:
-		log_print("No images found for journal!")
-		quit()
 
 	if entries != None:
 		add_images_before_date(image_refs, None, entries, index_page_num)
@@ -750,28 +682,28 @@ def main():
 	
 	# clean existing output files
 	if args.clean:
-		log_print("Cleaning journal folder", end="", flush=True)
+		print("Cleaning journal folder", end="", flush=True)
 		folders_removed = 0
 		files_removed = 0
 		for name in os.listdir(journal_folder):
 			path= os.path.join(journal_folder, name)
 			if name.startswith(thumb_folder_root) or name.startswith(picture_folder_root) or name=="assets":
-				log_print(".", end="", flush=True)
+				print(".", end="", flush=True)
 				shutil.rmtree(path)
 				folders_removed += 1
 			elif name.startswith(thumb_name_root) or name.startswith(picture_name_root) or name.startswith(header_name_root) or name.startswith(index_root) or name.startswith(detail_root) or name=="movies.txt":
-				log_print(".", end="", flush=True)
+				print(".", end="", flush=True)
 				files_removed += 1
 				os.remove(path)
-		log_print()
-		log_print("  (Removed {:d} {} and {:d} {})".format(folders_removed, pluralize("folder", folders_removed), files_removed, pluralize("file", files_removed)))
+		print()
+		print("  (Removed {:d} {} and {:d} {})".format(folders_removed, pluralize("folder", folders_removed), files_removed, pluralize("file", files_removed)))
 
 	#copy assets folder
 	dest_assets_path = os.path.join(journal_folder, "assets")
 	if overwrite_assets and os.path.isdir(dest_assets_path):
 		shutil.rmtree(dest_assets_path)
 	if not os.path.isdir(dest_assets_path):
-		log_print("Copying assets folder")
+		print("Copying assets folder")
 		src_assets_path = os.path.join(script_path, "assets")
 		shutil.copytree(src_assets_path, dest_assets_path)
 	
@@ -785,7 +717,7 @@ def main():
 				movie_refs[index] = "{}\t0\t1.0\t{}".format(movie_ref["picture_num"], movie_ref["movie_text"])
 				index = index + 1
 			movie_refs.insert(0, "{:d},1\n".format(len(final_image_refs)))
-			log_print("Creating: ", "movies.txt")
+			print("Creating: ", "movies.txt")
 			file.writelines(movie_refs)
 
 	image_save_start = time.time()
@@ -798,17 +730,16 @@ def main():
 			dest_path = os.path.join(journal_folder, folder_name)
 			if not os.path.isdir(dest_path):
 				if not create_start:
-					log_print("Creating folders", end="", flush=True)
+					print("Creating folders", end="", flush=True)
 					create_start = True
-				log_print(".", end="", flush=True)
+				print(".", end="", flush=True)
 				os.mkdir(dest_path)
 		if create_start:
-			log_print()
+			print()
 		
 		# resize images
-		log_print("Creating {:d} {}        ".format(image_count, pluralize("image", image_count, True)), end="", flush=True)
-		if log_to_console:
-			log_print("[{}]{}".format(" "*image_count, "\b"*(image_count+1)), end="", flush=True)
+		print("Creating {:d} {}        ".format(image_count, pluralize("image", image_count, True)), end="", flush=True)
+		print("[{}]{}".format(" "*image_count, "\b"*(image_count+1)), end="", flush=True)
 		
 		futures = []
 				
@@ -816,7 +747,7 @@ def main():
 			if single_thread:
 				result = save_versions(final_image_refs, ref_index, image_folders, page_headers, page_width)
 				add_keys_to_dict(result[2], final_image_refs[result[3]])
-				log_print(".", end="", flush=True)
+				print(".", end="", flush=True)
 			else:
 				future = executor.submit(save_versions, final_image_refs, ref_index, image_folders, page_headers, page_width)
 				futures.append(future)
@@ -825,20 +756,20 @@ def main():
 			for future in concurrent.futures.as_completed(futures, timeout=None):
 				task_exception = future.exception()
 				if task_exception != None:
-					log_print("Image scaling exception: ", task_exception)
+					print("Image scaling exception: ", task_exception)
 				result = future.result()
 				if result[0] >= 0:
 					add_keys_to_dict(result[2], final_image_refs[result[3]])
 				if result[0] < 0:
-					log_print("Image Save Error:", result[1])
+					print("Image Save Error:", result[1])
 				elif result[0] == 0:
-					log_print("x", end="", flush=True)
+					print("x", end="", flush=True)
 				else:
-					log_print(".", end="", flush=True)
-		elif log_to_console:
-			log_print("x", end="", flush=True)
+					print(".", end="", flush=True)
+		else:
+			print("x", end="", flush=True)
 		
-		log_print()
+		print()
 
 	image_save_time = time.time() - image_save_start
 	html_generate_start = time.time()
@@ -846,17 +777,17 @@ def main():
 	copyright = "©" + str(datetime.today().year) + " RickAndRandy.com"
 
 	# save picture html files
+	page_count = len(pages)
 	detail_count = len(final_image_refs)
 	if detail_count>0:
-		log_print("Creating {:d} detail {}  ".format(detail_count, pluralize("page", detail_count, True)), end="", flush=True)
+		print("Creating {:d} detail {}  ".format(detail_count, pluralize("page", detail_count, True)), end="", flush=True)
 
 		with open(os.path.join(script_path, "detail.html"), "r") as file:
 			detail_lines = file.readlines()
 		with open(os.path.join(script_path, "movie.html"), "r") as file:
 			movie_lines = file.readlines()
 
-		if log_to_console:
-			log_print("[{}]{}".format(" "*detail_count, "\b"*(detail_count+1)), end="", flush=True)
+		print("[{}]{}".format(" "*detail_count, "\b"*(detail_count+1)), end="", flush=True)
 		
 		page_number = 1
 		for image_ref in final_image_refs:
@@ -875,7 +806,7 @@ def main():
 			replace_keys(new_detail_lines, "_ImageWidth_", str(image_ref["width@1x"]))
 			replace_keys(new_detail_lines, "_ImageHeight_", str(image_ref["height@1x"]))
 		
-			replace_keys(new_detail_lines, "_IndexPageURL_", index_url(image_ref["index_page_num"]))
+			replace_keys(new_detail_lines, "_IndexPageURL_", index_url(image_ref["index_page_num"], page_count))
 			
 			replace_keys(new_detail_lines, "_PageNumber_", str(page_number))
 			replace_keys(new_detail_lines, "_PreviousPageNumber_", str(page_number-1))
@@ -903,18 +834,18 @@ def main():
 				try:
 					with open(detail_path, "w") as detail_file:
 						detail_file.writelines(new_detail_lines)
-						log_print(".", end="", flush=True)
+						print(".", end="", flush=True)
 						did_save = True
 						
 				except OSError:
-					log_print("\nCannot save: ", detail_path)
+					print("\nCannot save: ", detail_path)
 		
 			if not did_save:
-				log_print("x", end="", flush=True)
+				print("x", end="", flush=True)
 		
 			page_number += 1
 			
-		log_print()
+		print()
 	
 	page_count = len(pages)
 	if page_count>0:
@@ -928,23 +859,22 @@ def main():
 		replace_keys(index_lines, "_ThumbSize_", str(thumb_size))
 		replace_keys(index_lines, "_HeaderHeight_", str(header_height))
 			
-		nav_index, nav_lines = extract_section(index_lines, "nav", "end_nav")
+		nav_index, nav_lines = extract_section(index_lines, "nav", "endnav")
 		photo_index, photo_lines = extract_section(index_lines, "picblock", "endpicblock")
 		title_index, title_line = extract_section(index_lines, "title1item", None)
 		title_index2, title_line2 = extract_section(index_lines, "title2item", None)
 		text_index, text_line = extract_section(index_lines, "journaltext", None)
 		image_index, image_line = extract_section(index_lines, "imageitem", None)
 		
-		log_print("Creating {:d} index {}   ".format(page_count, pluralize("page", page_count, True)), end="", flush=True)
-		if log_to_console:
-			log_print("[{}]{}".format(" "*page_count, "\b"*(page_count+1)), end="", flush=True)
+		print("Creating {:d} index {}   ".format(page_count, pluralize("page", page_count, True)), end="", flush=True)
+		print("[{}]{}".format(" "*page_count, "\b"*(page_count+1)), end="", flush=True)
 		
 		page_index = 1
 		for page in pages:
 			new_index_lines = index_lines.copy()
 			
-			next_url = index_url(page_index+1)
-			prev_url = index_url(page_index-1)
+			next_url = index_url(page_index+1, page_count)
+			prev_url = index_url(page_index-1, page_count)
 			
 			page_title = journal["Title"]
 			if page_count > 1:
@@ -953,21 +883,15 @@ def main():
 			replace_keys(new_index_lines, "_PageTitle_", html.escape(page_title))
 			replace_keys(new_index_lines, "_SiteHeading_", html.escape(journal["Title"]))
 			
-			if page_index == 1:
-				if previous_external_url:
-					replace_keys(new_index_lines, "_PreviousPageURL_", previous_external_url)
-				else:
-					remove_lines_with_key(new_index_lines, "removeonfirstpage")
-			else:
+			if prev_url:
 				replace_keys(new_index_lines, "_PreviousPageURL_", prev_url)
+			elif page_index == 1:
+				remove_lines_with_key(new_index_lines, "removeonfirstpage")
 				
-			if page_index == page_count:
-				if next_external_url:
-					replace_keys(new_index_lines, "_NextPageURL_", next_external_url)
-				else:
-					remove_lines_with_key(new_index_lines, "removeonlastpage")
-			else:
+			if next_url:
 				replace_keys(new_index_lines, "_NextPageURL_", next_url)
+			elif page_index == page_count:
+				remove_lines_with_key(new_index_lines, "removeonlastpage")
 
 			if page_count == 1:
 				remove_lines_with_key(new_index_lines, "prevnext")
@@ -1033,69 +957,37 @@ def main():
 				try:
 					with open(output_path, "w") as file:
 						file.writelines(new_index_lines)
-						log_print(".", end="", flush=True)
+						print(".", end="", flush=True)
 						did_save = True
 		
 				except OSError:
-					log_print("\nCannot save: ", output_path)
+					print("\nCannot save: ", output_path)
 					
 			if not did_save:
-				log_print("x", end="", flush=True)
+				print("x", end="", flush=True)
 				
 			page_index += 1
 		
-		log_print()
+		print()
 	
 	html_generate_time = time.time() - html_generate_start
 	total_time = time.time() - start_time
 	
 	if args.timings:
-		log_print("Timing Summary")
+		print("Timing Summary")
 		format_str = "  {:<18} {:6.3f}s"
-		log_print(format_str.format("File scanning:", file_scan_time))
-		if photo_list_time >= 0.0005: log_print(format_str.format("Enumerate files:", photo_list_time))	
-		if journal_scan_time >= 0.0005: log_print(format_str.format("Journal scanning: ", journal_scan_time))
-		if image_save_time >= 0.0005: log_print(format_str.format("Image Save:", image_save_time))
-		if html_generate_time >= 0.0005: log_print(format_str.format("HTML Generation:", html_generate_time))
-		log_print(format_str.format("Total Time:", total_time))
-	
-def main_wrapper():
-	log_print("-- Building Journal --")
-	main()
-	log_print("-- Journal Building Complete --")
-	if not log_to_console:
-		log_print()
-		log_print("<Press any key to close>")
+		print(format_str.format("File scanning:", file_scan_time))
+		if photo_list_time >= 0.0005: print(format_str.format("Enumerate files:", photo_list_time))	
+		if journal_scan_time >= 0.0005: print(format_str.format("Journal scanning: ", journal_scan_time))
+		if image_save_time >= 0.0005: print(format_str.format("Image Save:", image_save_time))
+		if html_generate_time >= 0.0005: print(format_str.format("HTML Generation:", html_generate_time))
+		print(format_str.format("Total Time:", total_time))
 	
 
 if __name__ == '__main__':
 	if not single_thread:
 		executor = concurrent.futures.ThreadPoolExecutor()
 	
-	if log_to_console:
-		main_wrapper()
-	else:	
-		logging.basicConfig(level=logging.INFO)
-	
-		root = tk.Tk()
-		root.geometry("800x400")
-		root.title('Journal Builder')
-		root.columnconfigure(0, weight=1)
-		root.rowconfigure(0, weight=1)
-		console_frame = ttk.Frame(root)
-		console_frame.grid(column=0, row=0, sticky=(N, W, E, S))
-		console_frame.columnconfigure(0, weight=1)
-		console_frame.rowconfigure(0, weight=1)
-		console = ConsoleUi(console_frame)
-		
-		frame = Frame(console.get_text(), padx=20, pady=20, bg='black')
-		btn = Button(frame, text = 'Done', bd = '5', padx=20, pady=10, command = quit)
-		btn.pack()
-		frame.place(rely=1.0, relx=1.0, x=0, y=0, anchor=SE)
-		
-		root.bind('<KeyPress>', quit)
-		signal.signal(signal.SIGINT, quit)
-		
-		executor.submit(main_wrapper)
-		
-		root.mainloop()
+print("-- Building Journal --")
+main()
+print("-- Journal Building Complete --")

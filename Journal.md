@@ -1,6 +1,6 @@
 JournalBuilder requires a destination folder where all of the generated files will be placed
-It should contain a file named journal.txt which describes the output journal
-Source images come either from a folder named images in the output folder, or
+It should contain a file named journal.txt (override with the -j option) which describes the output journal
+Source images come either from a folder named images (override with the -i option) in the output folder, or
 from an album in the Photos library spcified with the -a option
 
 Below is the layout for the journal.txt file
