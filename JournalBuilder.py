@@ -5,11 +5,6 @@
 # pip3 install exifread
 # pip3 install osxphotos
 
-# time - threads = 20.11
-# time - single thread 31.58
-# time - threaded by image 5.66
-# time - process by image 6.56
-
 import sys, os, time, shutil, pathlib
 import argparse
 from datetime import datetime
@@ -17,12 +12,9 @@ from PIL import Image
 import pyheif
 import exifread
 import concurrent.futures
-# import pprint
+import html  
 
-import queue
-import logging
-import signal
-import threading
+import queue,logging, signal
 import tkinter as tk
 from tkinter.scrolledtext import ScrolledText
 from tkinter import ttk, VERTICAL, HORIZONTAL, N, S, E, W, SE, font, Button, Frame
@@ -31,21 +23,34 @@ parser = argparse.ArgumentParser(description='Generate a web journal')
 logger = logging.getLogger(__name__)
 
 parser.add_argument("folder", help="Folder containing source files", nargs="?")
-parser.add_argument("-d", "--documentation", help="Print user manual", action="store_true")
-parser.add_argument("-a", "--album_name", help="Get images from Photos album", nargs=1)
-parser.add_argument("-l", "--log_to_console", help="Outout messages to stdout", action="store_true")
-parser.add_argument("-lw", "--log_to_window", help="Outout messages to a separate window", action="store_true")
-parser.add_argument("-s", "--single_thread", help="Run all tasks on the main thread", action="store_true")
-parser.add_argument("-j", "--jpeg_quality", help="Set output JPEG quality level ", type=str, choices=["low", "medium", "high", "very_high", "maximum"], default="high")
-parser.add_argument("-w", "--overwrite", help="Overwrite all existing output files", action="store_true")
-parser.add_argument("-wi", "--overwrite_images", help="Overwrite existing output images", action="store_true")
-parser.add_argument("-wh", "--overwrite_headerimages", help="Overwrite existing header images", action="store_true")
-parser.add_argument("-wp", "--overwrite_pages", help="Overwrite existing html pages", action="store_true")
-parser.add_argument("-wm", "--overwrite_movies", help="Overwrite existing movies.txt", action="store_true")
-parser.add_argument("-wa", "--overwrite_assets", help="Overwrite existing assets folder", action="store_true")
-parser.add_argument("-c", "--clean", help="Remove all existing output files", action="store_true")
-parser.add_argument("-t", "--timings", help="Print timing information", action="store_true")
-	
+parser.add_argument("-?", dest="documentation", help="Show user manual", action="store_true")
+
+group = parser.add_argument_group("album settings")
+group.add_argument("-a", dest="album_name", help="Get images from Photos album", type=str, nargs=1)
+group.add_argument("-d", dest="date_sort", help="Show images in chronological order (Photos album only)", action="store_true")
+group.add_argument("-f", dest="favorites", help="Show only favorite images (Photos album only)", action="store_true")
+
+group = parser.add_argument_group("journal control")
+group.add_argument("-jt", dest="journal_title", help="Journal title", type=str, nargs=1)
+group.add_argument("-ts", dest="thumb_size", help="Thumbnail size", type=int, nargs=1, default=[190])
+group.add_argument("-is", dest="image_size", help="Base image size", type=int, nargs=1, default=[1024])
+group.add_argument("-hh", dest="header_height", help="Header height", type=int, nargs=1, default=[225])
+group.add_argument("-j", dest="jpeg_quality", help="Set output JPEG quality level ", type=str, choices=["low", "medium", "high", "very_high", "maximum"], default="high")
+
+group = parser.add_argument_group("overwriting")
+group.add_argument("-w", dest="overwrite", help="Overwrite all existing output files", action="store_true")
+group.add_argument("-wi", dest="overwrite_images", help="Overwrite existing output images", action="store_true")
+group.add_argument("-wh", dest="overwrite_headerimages", help="Overwrite existing header images", action="store_true")
+group.add_argument("-wp", dest="overwrite_pages", help="Overwrite existing html pages", action="store_true")
+group.add_argument("-wm", dest="overwrite_movies", help="Overwrite existing movies.txt", action="store_true")
+group.add_argument("-wa", dest="overwrite_assets", help="Overwrite existing assets folder", action="store_true")
+
+parser.add_argument("-c", dest="clean", help="Remove all existing output files", action="store_true")
+parser.add_argument("-t", dest="timings", help="Print timing information", action="store_true")
+parser.add_argument("-l", dest="log_to_console", help="Outout messages to stdout", action="store_true")
+parser.add_argument("-lw", dest="log_to_window", help="Outout messages to a separate window", action="store_true")
+parser.add_argument("-s", dest="single_thread", help="Run all tasks on the main thread", action="store_true")
+
 args = parser.parse_args()
 
 script_path = os.path.abspath(os.path.dirname(sys.argv[0]))
@@ -61,8 +66,6 @@ if args.folder:
 else:
 	parser.error("a destination folder path is required")
 
-images_path = os.path.join(journal_folder, "images")
-
 overwrite_images = args.overwrite or args.overwrite_images
 overwrite_headers = args.overwrite or args.overwrite_headerimages
 overwrite_pages = args.overwrite or args.overwrite_pages
@@ -73,9 +76,9 @@ single_thread = args.single_thread
 
 start_time = time.time()
 
-thumb_size = 190
-base_image_size = 1024
-header_height = 225
+thumb_size = args.thumb_size[0]
+base_image_size = args.image_size[0]
+header_height = args.header_height[0]
 
 if args.log_to_window:
 	log_to_console = False
@@ -153,12 +156,12 @@ def log_print(*args,**kwargs):
 	for item in args:
 		str_item = str(item)
 		if len(str_item)>0:
-			if message:
+			if message != None:
 				message = message + " " + str_item
 			else:
 				message = str_item
 			
-	if not message:
+	if message == None:
 		message = ""
 	if log_to_console:
 		print(message, end=end_str, flush=flush_val)
@@ -207,7 +210,7 @@ def save_versions(image_refs, ref_index, image_folders, page_headers, page_width
 		else:
 			image = Image.open(filepath)
 
-		if image:
+		if image != None:
 			is_loaded = False
 			image_size = image.size
 			orientation = 0
@@ -227,7 +230,7 @@ def save_versions(image_refs, ref_index, image_folders, page_headers, page_width
 			new_keys["image_size"] = image_size
 
 			for folder_name, name_root, size in image_folders:
-				output_path = os.path.join(journal_folder, folder_name, picture_url(image_ref["picture_num"]))
+				output_path = os.path.join(journal_folder, folder_name, picture_url(name_root, image_ref["picture_num"]))
 
 				if overwrite_images or not os.path.isfile(output_path):
 					try:
@@ -278,7 +281,7 @@ def replace_keys(lines, src_key, replace_key):
 			
 def remove_tag(lines, tag):
 	for index, line in enumerate(lines):
-		tag_index = line.find(tag);
+		tag_index = line.find(tag)
 		if (tag_index >= 0):
 			line_len = len(line)
 			tag_end_index = tag_index + len(tag)
@@ -294,7 +297,12 @@ def remove_tag(lines, tag):
 			lines[index] = line[:tag_index] + line[tag_end_index:]
 			
 def remove_lines_with_key(lines, key):
-	return [line for line in lines if key not in line]
+	index = 0
+	while index < len(lines):
+		if key in lines[index]:
+			del lines[index]
+		else:
+			index += 1
 	
 def format_shutter(speed):
 	if (speed <= 0.5):
@@ -370,7 +378,7 @@ def extract_section(lines, starttext, endtext):
 	index = index_of_substring(lines, starttext)
 	if index == -1:
 		return (0, None)
-	if endtext:
+	if endtext != None:
 		end_index = index_of_substring(lines, endtext, index+1)
 		if end_index == -1:
 			return (0, None)
@@ -390,8 +398,8 @@ def index_url(index_num):
 def header_image_url(page_num, suffix=""):
 	return "{} - {:d}{}.jpg".format(header_name_root, page_num, suffix)
 
-def picture_url(page_num):
-	return "{}{}.jpg".format(header_name_root, page_num)
+def picture_url(name_root, page_num):
+	return "{}{}.jpg".format(name_root, page_num)
 
 def make_nav_bar(nav_lines, page_index, page_names):
 	nav_count = len(page_names)
@@ -413,14 +421,14 @@ def make_nav_bar(nav_lines, page_index, page_names):
 		selected_index = selected_index + 1
 
 	if page_index == 1:
-		nav_lines = remove_lines_with_key(nav_lines, "removeonfirstpage")
+		remove_lines_with_key(nav_lines, "removeonfirstpage")
 	else:
-		nav_lines = remove_lines_with_key(nav_lines, "leaveonfirstpage")
+		remove_lines_with_key(nav_lines, "leaveonfirstpage")
 		
 	if page_index == nav_count:
-		nav_lines = remove_lines_with_key(nav_lines, "removeonlastpage")
+		remove_lines_with_key(nav_lines, "removeonlastpage")
 	else:
-		nav_lines = remove_lines_with_key(nav_lines, "leaveonlastpage")
+		remove_lines_with_key(nav_lines, "leaveonlastpage")
 		
 	remove_tag(nav_lines, "removeonfirstpage")
 	remove_tag(nav_lines, "leaveonfirstpage")
@@ -436,8 +444,8 @@ def insert_array_into_array(src, dest, index):
 	return index
 
 def make_photo_block(photo_lines, image_refs, thumb_size):
-	row_index, row_lines = extract_section(photo_lines, "picrow", "end_picrow")
-	image_index, image_lines = extract_section(row_lines, "imagediv", "end_imagediv")
+	row_index, row_lines = extract_section(photo_lines, "picrow", "endpicrow")
+	image_index, image_lines = extract_section(row_lines, "imagediv", "endimagediv")
 	
 	row_count = 0
 	current_row_lines = row_lines.copy()
@@ -453,14 +461,14 @@ def make_photo_block(photo_lines, image_refs, thumb_size):
 		new_size = scaled_size(image_ref["image_size"], thumb_size)
 		
 		replace_keys(new_image_lines, "_DetailPageURL_", detail_root + image_ref["picture_num"] + ".html")
-		replace_keys(new_image_lines, "_ThumbURL_", picture_url(image_ref["picture_num"]))
+		replace_keys(new_image_lines, "_ThumbURL_", picture_url(thumb_name_root, image_ref["picture_num"]))
 		replace_keys(new_image_lines, "_ThumbWidth_", str(new_size[0]))
 		replace_keys(new_image_lines, "_ThumbHeight_", str(new_size[1]))
 		
 		if "caption" in image_ref:
-			replace_keys(new_image_lines, "_metavalue_", image_ref["caption"])
+			replace_keys(new_image_lines, "_metavalue_", html.escape(image_ref["caption"]))
 		else:
-			new_image_lines = remove_lines_with_key(new_image_lines, "_metavalue_")			
+			remove_lines_with_key(new_image_lines, "_metavalue_")			
 		
 		current_image_index = insert_array_into_array(new_image_lines, current_row_lines, current_image_index)
 		row_count = row_count + 1
@@ -470,8 +478,11 @@ def make_photo_block(photo_lines, image_refs, thumb_size):
 
 	return photo_lines
 
-def pluralize(str, count):
-	return str if count==1 else str+"s"
+def pluralize(str, count, pad=False):
+	if count==1:
+		return str+" " if pad else str
+	else:
+		return str+"s"
 
 def load_image(image, orientation):
 	if orientation == 3:
@@ -496,8 +507,14 @@ def main():
 	image_refs = []
 
 	# read journal file
-	with open(os.path.join(journal_folder, "journal.txt"), "r") as file:
-		journal_src = file.readlines()
+	journal_file_path = os.path.join(journal_folder, "journal.txt")
+	if os.path.isfile(journal_file_path):
+		with open(journal_file_path, "r") as file:
+			journal_src = file.readlines()
+	elif args.album_name:
+		journal_src = []
+	else:
+		parser.error("journal.txt not found!")
 		
 	# scan for date overrides
 	date_overrides = {}
@@ -520,29 +537,33 @@ def main():
 			next_external_url = text
 	
 	# read the file list, get the file info
-	file_scan_start = time.time()
-	photo_list_start = time.time()
-
+	file_scan_start = photo_list_start = time.time()
 	file_paths = []
 
 	if from_photos:
 		photosdb = osxphotos.PhotosDB()
-		album_info = next(filter(lambda info: info.title == args.album_name, photosdb.album_info), None)
-		if album_info:
+		album_info = next(filter(lambda info: info.title == args.album_name[0], photosdb.album_info), None)
+		if album_info != None:
 			for photo in album_info.photos:
-				photo_path = photo.path_edited if photo.path_edited else photo.path
-				if photo_path:
-					file_paths.append((photo.filename, photo_path, photo.title))
-				else:
-					log_print("File missing for", photo.filename)
+				if photo.isphoto and not photo.hidden and (not args.favorites or photo.favorite):
+					photo_path = photo.path_edited if photo.path_edited else photo.path
+					if photo_path != None:
+						file_paths.append((photo.original_filename, photo_path, photo.title))
+					else:
+						log_print("File missing for", photo.filename)
 		else:
 			log_print("Photos album not found:", args.album_name)
 			quit()
 	else:
-		for filename in os.listdir(images_path):
-			filepath= os.path.join(images_path, filename)
-			file_paths.append((filename, filepath, None))
+		images_path = os.path.join(journal_folder, "images")
+		if os.path.isdir(images_path):
+			for filename in os.listdir(images_path):
+				file_paths.append((filename, os.path.join(images_path, filename), None))
 			
+	if len(file_paths) == 0:
+		log_print("No photos found!")
+		quit()
+
 	photo_list_time = time.time() - photo_list_start
 		
 	for filename, filepath, title in file_paths:
@@ -569,7 +590,7 @@ def main():
 				image_ref["image_date"] = date_from_string(image_date)
 				image_ref["orientation"] = tags['Image Orientation'].values[0] if 'Image Orientation' in keys else 0
 
-				if title:
+				if title != None:
 					image_ref["caption"] = title
 				elif 'Image ImageDescription' in keys:
 					image_ref["caption"] = tags['Image ImageDescription'].values
@@ -593,10 +614,12 @@ def main():
 				image_refs.append(image_ref)
 
 	file_scan_time = time.time() - file_scan_start
-	
+
 	# sort based on date
-	image_refs.sort(key=lambda x: x.get('image_date'))
+	if not from_photos or args.date_sort:
+		image_refs.sort(key=lambda x: x.get('image_date'))
 	
+	# generate journal structure
 	all_image_refs = image_refs.copy()
 	pages = []
 	page_names = []
@@ -630,7 +653,7 @@ def main():
 			if len(tag_parts) >= 1:
 				try:
 					header_ref = next(filter(lambda image_ref: image_ref["file_name"] == tag_parts[0], all_image_refs), None)
-					if header_ref:
+					if header_ref != None:
 						page["HeaderRef"] = header_ref
 						if len(tag_parts) >= 2:
 							header_offset = int(tag_parts[1])
@@ -641,7 +664,6 @@ def main():
 					log_print("Header image not found:", tag_parts[0])
 					
 			page_headers.append((header_ref, header_offset, index_page_num))
-			
 			pages.append(page)
 			page_names.append(text)
 		elif tag == "Heading":
@@ -673,7 +695,21 @@ def main():
 			else:
 				log_print("Image for caption not found:", subtag)
 	
-	if entries:
+	if len(pages) == 0 and args.album_name:
+		name = args.journal_title[0] if args.journal_title else args.album_name[0]
+		journal["Title"] = name
+		entries = []
+		page = {"Title": name, "Entries": entries}
+		page_headers.append((None, 0, index_page_num))
+		pages.append(page)
+		page_names.append(name)
+		index_page_num = 1
+
+	if len(pages) == 0 and args.album_name:
+		log_print("No images found for journal!")
+		quit()
+
+	if entries != None:
 		add_images_before_date(image_refs, None, entries, index_page_num)
 	
 	# merge movie entries
@@ -722,308 +758,319 @@ def main():
 			if name.startswith(thumb_folder_root) or name.startswith(picture_folder_root) or name=="assets":
 				log_print(".", end="", flush=True)
 				shutil.rmtree(path)
-				folders_removed -= 1
+				folders_removed += 1
 			elif name.startswith(thumb_name_root) or name.startswith(picture_name_root) or name.startswith(header_name_root) or name.startswith(index_root) or name.startswith(detail_root) or name=="movies.txt":
 				log_print(".", end="", flush=True)
 				files_removed += 1
 				os.remove(path)
 		log_print()
-		log_print("Removed", folders_removed, pluralize("folder", folders_removed), "and", files_removed, pluralize("file", files_removed))
-	
+		log_print("  (Removed {:d} {} and {:d} {})".format(folders_removed, pluralize("folder", folders_removed), files_removed, pluralize("file", files_removed)))
+
 	#copy assets folder
 	dest_assets_path = os.path.join(journal_folder, "assets")
 	if overwrite_assets and os.path.isdir(dest_assets_path):
-		shutil.rmtree(dest_assets_path);
+		shutil.rmtree(dest_assets_path)
 	if not os.path.isdir(dest_assets_path):
 		log_print("Copying assets folder")
 		src_assets_path = os.path.join(script_path, "assets")
 		shutil.copytree(src_assets_path, dest_assets_path)
 	
-	# create image folders
-	create_start = False
-	for folder_name, name_root, size in image_folders:
-		dest_path = os.path.join(journal_folder, folder_name)
-		if not os.path.isdir(dest_path):
-			if not create_start:
-				log_print("Creating folders", end="", flush=True)
-				create_start = True
-			log_print(".", end="", flush=True)
-			os.mkdir(dest_path)
-	if create_start:
-		log_print()
-	
 	#save movies.txt
-	if (len(movie_refs)) > 0:
-		movie_file_path = os.path.join(journal_folder, "movies.txt")
-		if not os.path.isfile(movie_file_path):
-			with open(movie_file_path, "w") as file:
-				index = 0
-				while index < len(movie_refs):
-					movie_ref = movie_refs[index]
-					movie_refs[index] = "{}\t0\t1.0\t{}".format(movie_ref["picture_num"], movie_ref["movie_text"])
-					index = index + 1
-				movie_refs.insert(0, "{:d},1\n".format(len(final_image_refs)))
-				log_print("Creating: ", "movies.txt")
-				file.writelines(movie_refs)
-	
-	# resize images
-	image_count = len(final_image_refs)
-	log_print("Creating {:d} images       ".format(image_count), end="", flush=True)
-	if log_to_console:
-		log_print("[{}]{}".format(" "*image_count, "\b"*(image_count+1)), end="", flush=True)
-	
-	futures = []
-	
-	image_save_start = time.time()
-	
-	for ref_index in range(len(final_image_refs)):
-		if single_thread:
-			result = save_versions(final_image_refs, ref_index, image_folders, page_headers, page_width)
-			add_keys_to_dict(result[2], final_image_refs[result[3]])
-			log_print(".", end="", flush=True)
-		else:
-			future = executor.submit(save_versions, final_image_refs, ref_index, image_folders, page_headers, page_width)
-			futures.append(future)
+	movie_file_path = os.path.join(journal_folder, "movies.txt")
+	if not os.path.isfile(movie_file_path):
+		with open(movie_file_path, "w") as file:
+			index = 0
+			while index < len(movie_refs):
+				movie_ref = movie_refs[index]
+				movie_refs[index] = "{}\t0\t1.0\t{}".format(movie_ref["picture_num"], movie_ref["movie_text"])
+				index = index + 1
+			movie_refs.insert(0, "{:d},1\n".format(len(final_image_refs)))
+			log_print("Creating: ", "movies.txt")
+			file.writelines(movie_refs)
 
-	if len(futures)>0:
-		for future in concurrent.futures.as_completed(futures, timeout=None):
-			task_exception = future.exception()
-			if task_exception:
-				log_print("Image scaling exception: ", task_exception)
-			result = future.result()
-			if result[0] >= 0:
-				add_keys_to_dict(result[2], final_image_refs[result[3]])
-			if result[0] < 0:
-				log_print("Image Save Error:", result[1])
-			elif result[0] == 0:
-				log_print("x", end="", flush=True)
-			else:
+	image_save_start = time.time()
+
+	image_count = len(final_image_refs)
+	if image_count>0:
+		# create image folders
+		create_start = False
+		for folder_name, name_root, size in image_folders:
+			dest_path = os.path.join(journal_folder, folder_name)
+			if not os.path.isdir(dest_path):
+				if not create_start:
+					log_print("Creating folders", end="", flush=True)
+					create_start = True
 				log_print(".", end="", flush=True)
-	elif log_to_console:
-		log_print("x", end="", flush=True)
-	
-	log_print()
+				os.mkdir(dest_path)
+		if create_start:
+			log_print()
+		
+		# resize images
+		log_print("Creating {:d} {}        ".format(image_count, pluralize("image", image_count, True)), end="", flush=True)
+		if log_to_console:
+			log_print("[{}]{}".format(" "*image_count, "\b"*(image_count+1)), end="", flush=True)
+		
+		futures = []
+				
+		for ref_index in range(len(final_image_refs)):
+			if single_thread:
+				result = save_versions(final_image_refs, ref_index, image_folders, page_headers, page_width)
+				add_keys_to_dict(result[2], final_image_refs[result[3]])
+				log_print(".", end="", flush=True)
+			else:
+				future = executor.submit(save_versions, final_image_refs, ref_index, image_folders, page_headers, page_width)
+				futures.append(future)
+
+		if len(futures)>0:
+			for future in concurrent.futures.as_completed(futures, timeout=None):
+				task_exception = future.exception()
+				if task_exception != None:
+					log_print("Image scaling exception: ", task_exception)
+				result = future.result()
+				if result[0] >= 0:
+					add_keys_to_dict(result[2], final_image_refs[result[3]])
+				if result[0] < 0:
+					log_print("Image Save Error:", result[1])
+				elif result[0] == 0:
+					log_print("x", end="", flush=True)
+				else:
+					log_print(".", end="", flush=True)
+		elif log_to_console:
+			log_print("x", end="", flush=True)
+		
+		log_print()
+
 	image_save_time = time.time() - image_save_start
-	
 	html_generate_start = time.time()
 	
-	# save picture html files
-	copyright = "©" + str(datetime.today().year) + "RickAndRandy.com"
-	
-	with open(os.path.join(script_path, "detail.html"), "r") as file:
-		detail_lines = file.readlines()
-	with open(os.path.join(script_path, "movie.html"), "r") as file:
-		movie_lines = file.readlines()
-	
-	detail_count = len(final_image_refs)
-	
-	log_print("Creating {:d} Detail pages ".format(detail_count), end="", flush=True)
+	copyright = "©" + str(datetime.today().year) + " RickAndRandy.com"
 
-	if log_to_console:
-		log_print("[{}]{}".format(" "*detail_count, "\b"*(detail_count+1)), end="", flush=True)
-	
-	page_number = 1
-	for image_ref in final_image_refs:
-		detail_name = detail_root + image_ref["picture_num"] + ".html"
-		detail_path = os.path.join(journal_folder, detail_name)
+	# save picture html files
+	detail_count = len(final_image_refs)
+	if detail_count>0:
+		log_print("Creating {:d} detail {}  ".format(detail_count, pluralize("page", detail_count, True)), end="", flush=True)
+
+		with open(os.path.join(script_path, "detail.html"), "r") as file:
+			detail_lines = file.readlines()
+		with open(os.path.join(script_path, "movie.html"), "r") as file:
+			movie_lines = file.readlines()
+
+		if log_to_console:
+			log_print("[{}]{}".format(" "*detail_count, "\b"*(detail_count+1)), end="", flush=True)
 		
-		if "is_movie" in image_ref:
-			new_detail_lines = movie_lines.copy()
-		else:
-			new_detail_lines = detail_lines.copy()
+		page_number = 1
+		for image_ref in final_image_refs:
+			detail_name = detail_root + image_ref["picture_num"] + ".html"
+			detail_path = os.path.join(journal_folder, detail_name)
 			
-		page_title = journal["Title"] + " - " + (image_ref["caption"] if "caption" in image_ref else image_ref["file_name"])
+			if "is_movie" in image_ref:
+				new_detail_lines = movie_lines.copy()
+			else:
+				new_detail_lines = detail_lines.copy()
+				
+			page_title = journal["Title"] + " - " + (image_ref["caption"] if "caption" in image_ref else image_ref["file_name"])
+			
+			replace_keys(new_detail_lines, "_PageTitle_", html.escape(page_title))
+			replace_keys(new_detail_lines, "_ImageURL_", image_ref["picture_name"])
+			replace_keys(new_detail_lines, "_ImageWidth_", str(image_ref["width@1x"]))
+			replace_keys(new_detail_lines, "_ImageHeight_", str(image_ref["height@1x"]))
 		
-		replace_keys(new_detail_lines, "_PageTitle_", page_title)
-		replace_keys(new_detail_lines, "_ImageURL_", image_ref["picture_name"])
-		replace_keys(new_detail_lines, "_ImageWidth_", str(image_ref["width@1x"]))
-		replace_keys(new_detail_lines, "_ImageHeight_", str(image_ref["height@1x"]))
-	
-		replace_keys(new_detail_lines, "_IndexPageURL_", index_url(image_ref["index_page_num"]))
+			replace_keys(new_detail_lines, "_IndexPageURL_", index_url(image_ref["index_page_num"]))
+			
+			replace_keys(new_detail_lines, "_PageNumber_", str(page_number))
+			replace_keys(new_detail_lines, "_PreviousPageNumber_", str(page_number-1))
+			replace_keys(new_detail_lines, "_NextPageNumber_", str(page_number+ 1))
+			
+			replace_keys(new_detail_lines, "_CurrentPageURL_", "{}{:d}.html".format(detail_root, page_number))
+			replace_keys(new_detail_lines, "_PreviousPageURL_", "{}{:d}.html".format(detail_root, page_number-1))
+			replace_keys(new_detail_lines, "_NextPageURL_", "{}{:d}.html".format(detail_root, page_number+1))
 		
-		replace_keys(new_detail_lines, "_PageNumber_", str(page_number))
-		replace_keys(new_detail_lines, "_PreviousPageNumber_", str(page_number-1))
-		replace_keys(new_detail_lines, "_NextPageNumber_", str(page_number+ 1))
+			replace_keys(new_detail_lines, "_EXIF_", image_ref["exif"])
 		
-		replace_keys(new_detail_lines, "_CurrentPageURL_", "{}{:d}.html".format(detail_root, page_number))
-		replace_keys(new_detail_lines, "_PreviousPageURL_", "{}{:d}.html".format(detail_root, page_number-1))
-		replace_keys(new_detail_lines, "_NextPageURL_", "{}{:d}.html".format(detail_root, page_number+1))
-	
-		replace_keys(new_detail_lines, "_EXIF_", image_ref["exif"])
-	
-		replace_keys(new_detail_lines, "_Copyright_", copyright)
+			replace_keys(new_detail_lines, "_Copyright_", html.escape(copyright))
+			
+			if (image_ref == final_image_refs[0]):
+				remove_lines_with_key(new_detail_lines, "removeonfirstpage")
+			if (image_ref == final_image_refs[-1]):
+				remove_lines_with_key(new_detail_lines, "removeonlastpage")
+			
+			remove_tag(new_detail_lines, "rkid")
+			remove_tag(new_detail_lines, "removeonfirstpage")
+			remove_tag(new_detail_lines, "removeonlastpage")
 		
-		if (image_ref == final_image_refs[0]):
-			new_detail_lines = remove_lines_with_key(new_detail_lines, "removeonfirstpage")
-		if (image_ref == final_image_refs[-1]):
-			new_detail_lines = remove_lines_with_key(new_detail_lines, "removeonlastpage")
+			did_save = False
+			if overwrite_pages or not os.path.isfile(detail_path):
+				try:
+					with open(detail_path, "w") as detail_file:
+						detail_file.writelines(new_detail_lines)
+						log_print(".", end="", flush=True)
+						did_save = True
+						
+				except OSError:
+					log_print("\nCannot save: ", detail_path)
 		
-		remove_tag(new_detail_lines, "rkid")
-		remove_tag(new_detail_lines, "removeonfirstpage")
-		remove_tag(new_detail_lines, "removeonlastpage")
-	
-		did_save = False
-		if overwrite_pages or not os.path.isfile(detail_path):
-			try:
-				with open(detail_path, "w") as detail_file:
-					detail_file.writelines(new_detail_lines)
-					log_print(".", end="", flush=True)
-					did_save = True
-					
-			except OSError:
-				log_print("\nCannot save: ", detail_path)
-	
-		if not did_save:
-			log_print("x", end="", flush=True)
-	
-		page_number += 1
+			if not did_save:
+				log_print("x", end="", flush=True)
 		
-	log_print()
-	
-	# write the index pages
-	with open(os.path.join(script_path, "index.html"), "r") as file:
-		index_lines = file.readlines()
-		
-	replace_keys(index_lines, "_PageWidth_", str(page_width))
-	replace_keys(index_lines, "_PageWidthExtra_", str(page_width_extra))
-	replace_keys(index_lines, "_NavWidth_", str(nav_width))
-	replace_keys(index_lines, "_ThumbSize_", str(thumb_size))
-	replace_keys(index_lines, "_HeaderHeight_", str(header_height))
-		
-	nav_index, nav_lines = extract_section(index_lines, "nav", "end_nav")
-	photo_index, photo_lines = extract_section(index_lines, "picblock", "end_picblock")
-	title_index, title_line = extract_section(index_lines, "title1_item", None)
-	title_index2, title_line2 = extract_section(index_lines, "title2_item", None)
-	text_index, text_line = extract_section(index_lines, "journaltext", None)
-	image_index, image_line = extract_section(index_lines, "image_item", None)
+			page_number += 1
+			
+		log_print()
 	
 	page_count = len(pages)
-	log_print("Creating {:d} Index pages   ".format(page_count), end="", flush=True)
-	if log_to_console:
-		log_print("[{}]{}".format(" "*page_count, "\b"*(page_count+1)), end="", flush=True)
-	
-	page_index = 1
-	for page in pages:
-		new_index_lines = index_lines.copy()
-		
-		next_url = index_url(page_index+1)
-		prev_url = index_url(page_index-1)
-		
-		page_title = journal["Title"]
-		if page_count > 1:
-			page_title = page_title + " - " + page_names[page_index-1]
-		
-		replace_keys(new_index_lines, "_PageTitle_", page_title)
-		replace_keys(new_index_lines, "_SiteHeading_", journal["Title"])
-		
-		if page_index == 1:
-			if previous_external_url:
-				replace_keys(new_index_lines, "_PreviousPageURL_", previous_external_url)
-			else:
-				new_index_lines = remove_lines_with_key(new_index_lines, "removeonfirstpage")
-		else:
-			replace_keys(new_index_lines, "_PreviousPageURL_", prev_url)
+	if page_count>0:
+		# write the index pages
+		with open(os.path.join(script_path, "index.html"), "r") as file:
+			index_lines = file.readlines()
 			
-		if page_index == page_count:
-			if next_external_url:
-				replace_keys(new_index_lines, "_NextPageURL_", next_external_url)
+		replace_keys(index_lines, "_PageWidth_", str(page_width))
+		replace_keys(index_lines, "_PageWidthExtra_", str(page_width_extra))
+		replace_keys(index_lines, "_NavWidth_", str(nav_width))
+		replace_keys(index_lines, "_ThumbSize_", str(thumb_size))
+		replace_keys(index_lines, "_HeaderHeight_", str(header_height))
+			
+		nav_index, nav_lines = extract_section(index_lines, "nav", "end_nav")
+		photo_index, photo_lines = extract_section(index_lines, "picblock", "endpicblock")
+		title_index, title_line = extract_section(index_lines, "title1item", None)
+		title_index2, title_line2 = extract_section(index_lines, "title2item", None)
+		text_index, text_line = extract_section(index_lines, "journaltext", None)
+		image_index, image_line = extract_section(index_lines, "imageitem", None)
+		
+		log_print("Creating {:d} index {}   ".format(page_count, pluralize("page", page_count, True)), end="", flush=True)
+		if log_to_console:
+			log_print("[{}]{}".format(" "*page_count, "\b"*(page_count+1)), end="", flush=True)
+		
+		page_index = 1
+		for page in pages:
+			new_index_lines = index_lines.copy()
+			
+			next_url = index_url(page_index+1)
+			prev_url = index_url(page_index-1)
+			
+			page_title = journal["Title"]
+			if page_count > 1:
+				page_title = page_title + " - " + page_names[page_index-1]
+			
+			replace_keys(new_index_lines, "_PageTitle_", html.escape(page_title))
+			replace_keys(new_index_lines, "_SiteHeading_", html.escape(journal["Title"]))
+			
+			if page_index == 1:
+				if previous_external_url:
+					replace_keys(new_index_lines, "_PreviousPageURL_", previous_external_url)
+				else:
+					remove_lines_with_key(new_index_lines, "removeonfirstpage")
 			else:
-				new_index_lines = remove_lines_with_key(new_index_lines, "removeonlastpage")
-		else:
-			replace_keys(new_index_lines, "_NextPageURL_", next_url)
-	
-		replace_keys(new_index_lines, "_HeaderImageURL_", header_image_url(page_index))
-		replace_keys(new_index_lines, "_Copyright_", copyright)
-	
-		if page_index == 1:
-			index_name = index_root + ".html"
-		else:
-			index_name = "{}{:d}.html".format(index_root, page_index)
-	
-		entries = page["Entries"]
-		new_lines = []
-	
-		for entry in entries:
-			if "Heading" in entry:
-				heading_parts = entry["Heading"].split("\t")
-				if len(heading_parts)>0:
-					new_title_line = title_line if len(heading_parts)==1 else title_line2
-					new_title_line = new_title_line.replace("_Text_", heading_parts[0])
-					if len(heading_parts)>1:
-						new_title_line = new_title_line.replace("_Text2_", heading_parts[1])
-					new_lines.append(new_title_line)
-			elif "Text" in entry:
-				new_lines.append(text_line.replace("_Text_", entry["Text"]))
-			elif "Image" in entry:
-				image_filename = entry["Image"]
-				with Image.open(os.path.join(journal_folder, image_filename)) as image:
-					width, height = image.size
-				new_image_line = image_line.replace("_ImageURL_", image_filename)
-				new_image_line = new_image_line.replace("_Width_", str(page_width))
-				new_image_line = new_image_line.replace("_Height_", str(int(page_width * height / width)))
-				new_lines.append(new_image_line)
-			elif "Photos" in entry:
-				new_lines.extend(make_photo_block(photo_lines.copy(), entry["Photos"], thumb_size))
+				replace_keys(new_index_lines, "_PreviousPageURL_", prev_url)
 				
-		dest_index = text_index
-		for line in new_lines:
-			new_index_lines.insert(dest_index, line)
-			dest_index += 1
-			
-		if page_count > 1:
-			new_nav_lines = make_nav_bar(nav_lines.copy(), page_index, page_names)
-			dest_index = nav_index
-			for line in new_nav_lines:
+			if page_index == page_count:
+				if next_external_url:
+					replace_keys(new_index_lines, "_NextPageURL_", next_external_url)
+				else:
+					remove_lines_with_key(new_index_lines, "removeonlastpage")
+			else:
+				replace_keys(new_index_lines, "_NextPageURL_", next_url)
+
+			if page_count == 1:
+				remove_lines_with_key(new_index_lines, "prevnext")
+			else:
+				remove_tag(new_index_lines, "prevnext")
+
+			replace_keys(new_index_lines, "_Copyright_", html.escape(copyright))
+
+			if page_index == 1:
+				index_name = index_root + ".html"
+			else:
+				index_name = "{}{:d}.html".format(index_root, page_index)
+		
+			entries = page["Entries"]
+			new_lines = []
+		
+			for entry in entries:
+				if "Heading" in entry:
+					heading_parts = entry["Heading"].split("\t")
+					if len(heading_parts)>0:
+						new_title_line = title_line if len(heading_parts)==1 else title_line2
+						new_title_line = new_title_line.replace("_Text_", heading_parts[0])
+						if len(heading_parts)>1:
+							new_title_line = new_title_line.replace("_Text2_", heading_parts[1])
+						new_lines.append(new_title_line)
+				elif "Text" in entry:
+					new_lines.append(text_line.replace("_Text_", entry["Text"]))
+				elif "Image" in entry:
+					image_filename = entry["Image"]
+					with Image.open(os.path.join(journal_folder, image_filename)) as image:
+						width, height = image.size
+					new_image_line = image_line.replace("_ImageURL_", image_filename)
+					new_image_line = new_image_line.replace("_Width_", str(page_width))
+					new_image_line = new_image_line.replace("_Height_", str(int(page_width * height / width)))
+					new_lines.append(new_image_line)
+				elif "Photos" in entry:
+					new_lines.extend(make_photo_block(photo_lines.copy(), entry["Photos"], thumb_size))
+					
+			dest_index = text_index
+			for line in new_lines:
 				new_index_lines.insert(dest_index, line)
 				dest_index += 1
-	
-		remove_tag(new_index_lines, "rkid")
-		remove_tag(new_index_lines, "removeonfirstpage")
-		remove_tag(new_index_lines, "removeonlastpage")
-	
-		did_save = False
-		output_path = os.path.join(journal_folder, index_name)
-		if overwrite_pages or not os.path.isfile(output_path):
-			try:
-				with open(output_path, "w") as file:
-					file.writelines(new_index_lines)
-					log_print(".", end="", flush=True)
-					did_save = True
-	
-			except OSError:
-				log_print("\nCannot save: ", output_path)
 				
-		if not did_save:
-			log_print("x", end="", flush=True)
-			
-		page_index += 1
-	
-	log_print()
+			if page_count > 1:
+				new_nav_lines = make_nav_bar(nav_lines.copy(), page_index, page_names)
+				dest_index = nav_index
+				for line in new_nav_lines:
+					new_index_lines.insert(dest_index, line)
+					dest_index += 1
+		
+			if page_headers[page_index-1][0]:
+				replace_keys(new_index_lines, "_HeaderImageURL_", header_image_url(page_index))
+			else:
+				remove_lines_with_key(new_index_lines, "_HeaderImageURL_")
+		
+			remove_tag(new_index_lines, "rkid")
+			remove_tag(new_index_lines, "removeonfirstpage")
+			remove_tag(new_index_lines, "removeonlastpage")
+		
+			did_save = False
+			output_path = os.path.join(journal_folder, index_name)
+			if overwrite_pages or not os.path.isfile(output_path):
+				try:
+					with open(output_path, "w") as file:
+						file.writelines(new_index_lines)
+						log_print(".", end="", flush=True)
+						did_save = True
+		
+				except OSError:
+					log_print("\nCannot save: ", output_path)
+					
+			if not did_save:
+				log_print("x", end="", flush=True)
+				
+			page_index += 1
+		
+		log_print()
 	
 	html_generate_time = time.time() - html_generate_start
 	total_time = time.time() - start_time
 	
 	if args.timings:
-		log_print("Timings:")
-		format_str = "  {:<18} {:6.2f}s"
+		log_print("Timing Summary")
+		format_str = "  {:<18} {:6.3f}s"
 		log_print(format_str.format("File scanning:", file_scan_time))
-		log_print(format_str.format("Enumerate files:", photo_list_time))	
-		log_print(format_str.format("Journal scanning: ", journal_scan_time))
-		log_print(format_str.format("Image Save:", image_save_time))
-		log_print(format_str.format("HTML Generation:", html_generate_time))
-		log_print()
+		if photo_list_time >= 0.0005: log_print(format_str.format("Enumerate files:", photo_list_time))	
+		if journal_scan_time >= 0.0005: log_print(format_str.format("Journal scanning: ", journal_scan_time))
+		if image_save_time >= 0.0005: log_print(format_str.format("Image Save:", image_save_time))
+		if html_generate_time >= 0.0005: log_print(format_str.format("HTML Generation:", html_generate_time))
 		log_print(format_str.format("Total Time:", total_time))
 	
 def main_wrapper():
-	log_print("Begin Journal Building")
+	log_print("-- Building Journal --")
 	main()
-	log_print("Journal Building Complete!")
+	log_print("-- Journal Building Complete --")
 	if not log_to_console:
 		log_print()
 		log_print("<Press any key to close>")
+	
 
 if __name__ == '__main__':
-	executor = concurrent.futures.ThreadPoolExecutor()
+	if not single_thread:
+		executor = concurrent.futures.ThreadPoolExecutor()
 	
 	if log_to_console:
 		main_wrapper()
@@ -1052,4 +1099,3 @@ if __name__ == '__main__':
 		executor.submit(main_wrapper)
 		
 		root.mainloop()
-	
