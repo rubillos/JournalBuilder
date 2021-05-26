@@ -27,3 +27,5 @@ Text fills empty space, blank lines are ignored
 lines<br>
 can be<br>
 concatenated with<br>
+
+any <a href="linked_page.html">standard html</a> may be included
