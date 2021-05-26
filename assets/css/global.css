@@ -41,7 +41,7 @@ ul#nav .next_text {display: none;}
 
 #content { clear: left; margin: 15px; padding: 0; }
 
-.imagediv { width: 200px; padding-right: 15px; text-align: center; margin-bottom: 15px; }
+.imagediv { padding-right: 15px; text-align: center; margin-bottom: 15px; }
 .imagelabel { font-family: 'HelveticaNeue-Light', 'Helvetica Neue Light', 'Helvetica Neue', Helvetica, Arial, Verdana, sans-serif; font-size:12px; color: #636466; line-height:15px; text-align: left; }
 .imagecell { margin: 0; padding: 0; text-align: center; background-color:#eee; vertical-align: bottom; }
 .imagecell img, .imagecell object { vertical-align: bottom; }
