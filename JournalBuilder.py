@@ -109,13 +109,14 @@ def save_scaled(image, size, path):
 	scaled_image = image.resize(size, resample=Image.LANCZOS)
 	scaled_image.save(path, "JPEG", quality=args.jpeg_quality)
 	
-def save_scaled_header(image, size, offset, path):
-	src_slice_height = int(image.size[1] * size[0] / image.size[0])
+def save_scaled_header(image, dest_size, offset, path):
+	src_slice_height = int(image.size[0] * dest_size[1] / dest_size[0])
 	src_top = int((image.size[1]-src_slice_height) * offset / 100)
-	cropped_image = image.resize(size, box=(0, src_top, image.size[0], src_top+src_slice_height), resample=Image.LANCZOS)
+	cropped_image = image.resize(dest_size, box=(0, src_top, image.size[0], src_top+src_slice_height), resample=Image.LANCZOS)
 	cropped_image.save(path, "JPEG", quality=args.jpeg_quality)
 
 def save_versions(image_refs, ref_index, image_folders, page_headers, page_width):
+	start_time = time.time()
 	result = 0
 	error_msg = ""
 	new_keys = None
@@ -162,14 +163,14 @@ def save_versions(image_refs, ref_index, image_folders, page_headers, page_width
 						new_size = scaled_size(image_size, size)
 						save_scaled(image, new_size, output_path)
 						result = result + 1 if result>=0 else result
-					except OSError:
+					except OSError as e:
 						result = -1
-						error_msg = "Cannot save: " + output_path
+						error_msg = "Error saving: " + output_path + ", " + str(e)
 
 				filename = image_ref["file_name"]
 				header_info = None
 				if len(page_headers) > 0:
-					header_info = next(filter(lambda head_item: head_item[0] and head_item[0]["file_name"] == filename, page_headers), None)
+					header_info = next((head_item for head_item in page_headers if head_item[0] and head_item[0]["file_name"] == filename), None)
 
 				if header_info and header_info[0]:
 					header_size = (page_width, header_height)
@@ -184,17 +185,17 @@ def save_versions(image_refs, ref_index, image_folders, page_headers, page_width
 									is_loaded = True
 								save_scaled_header(image, (header_size[0] * scales[i], header_size[1] * scales[i]), header_info[1], output_path)
 								result = result + 1 if result >= 0 else result
-							except OSError:
+							except OSError as e:
 								result = -1
-								error_msg = "Cannot save: " + output_path
+								error_msg = "Error saving: " + output_path + ", " + str(e)
 		else:
 			result = -1
 			error_msg = "Cannot open: " + filepath
-	except OSError:
+	except OSError as e:
 		result = -1
-		error_msg = "Error generating images"
+		error_msg = "Error generating images: " + str(e)
 
-	return(result, error_msg, new_keys, ref_index)
+	return(result, error_msg, new_keys, ref_index, time.time()-start_time)
 
 def replace_keys(lines, src_key, replace_key):
 	for index, line in enumerate(lines):
@@ -233,7 +234,7 @@ def format_shutter(speed):
 		return str(speed) + "s"
 		
 def get_next_line(src):
-	tag = ""
+	tag = None
 	subtag = ""
 	text = ""
 	line = src.pop(0).strip()
@@ -242,11 +243,11 @@ def get_next_line(src):
 	if line.startswith("["):
 		tag_end = line.find("]", 1)
 		if tag_end > 1:
-			tag_parts = line[1:tag_end].split(":")
+			tag_parts = line[1:tag_end].split("=")
 			tag = tag_parts[0]
 			subtag = tag_parts[1] if len(tag_parts) > 1 else ""
 			text = line[tag_end+1:]
-	else:
+	elif len(line)>0:
 		tag = "Text"
 		text = line
 		while text.endswith("<br>") and len(src)>0 and not src[0].startswith("["):
@@ -433,6 +434,17 @@ def add_keys_to_dict(src_dict, dest_dict):
 	for key, value in src_dict.items():
 		dest_dict[key] = value
 
+def extract_up_to(text, substr):
+	src_text = text
+	if text.startswith('"'):
+		text = text[1:]
+		substr = '"' + substr
+	index = text.find(substr)
+	if index>=0:
+		return text[:index], text[index+len(substr):]
+	else:
+		return None, src_text
+
 def main():
 	global previous_external_url
 	global next_external_url
@@ -479,14 +491,16 @@ def main():
 	file_paths = []
 
 	if from_photos:
+		print("Opening system Photos database...", end="", flush=True)
 		photosdb = osxphotos.PhotosDB()
-		album_info = next(filter(lambda info: info.title == args.album_name[0], photosdb.album_info), None)
+		print(" done.")
+		album_info = next((info for info in photosdb.album_info if info.title == args.album_name[0]), None)
 		if album_info != None:
 			for photo in album_info.photos:
 				if photo.isphoto and not photo.hidden and (not args.favorites or photo.favorite):
 					photo_path = photo.path_edited if photo.path_edited else photo.path
 					if photo_path != None:
-						file_paths.append((photo.original_filename, photo_path, photo.title))
+						file_paths.append((photo.original_filename, photo_path, photo.title, photo.date))
 					else:
 						print("File missing for", photo.filename)
 		else:
@@ -497,14 +511,14 @@ def main():
 			images_path = os.path.join(journal_folder, images_path)
 		if os.path.isdir(images_path):
 			for filename in os.listdir(images_path):
-				file_paths.append((filename, os.path.join(images_path, filename), None))
+				file_paths.append((filename, os.path.join(images_path, filename), None, None))
 			
 	if len(file_paths) == 0:
 		parser.error("No source photos found! Please specify an album name (-a) or an image folder (-i).")
 
 	photo_list_time = time.time() - photo_list_start
 		
-	for filename, filepath, title in file_paths:
+	for filename, filepath, title, photo_date in file_paths:
 		if not filename.startswith('.') and os.path.isfile(filepath):
 			with open(filepath, "rb") as image_file:
 				tags = exifread.process_file(image_file, details=False)
@@ -516,6 +530,8 @@ def main():
 				
 				if filename in date_overrides:
 					image_date = date_overrides[filename]
+				elif photo_date != None:
+					image_date = photo_date.strftime("%Y:%m:%d %H:%M:%S")
 				else:
 					if 'Image DateTime' in tags:
 						image_date = tags['Image DateTime'].values
@@ -588,7 +604,7 @@ def main():
 			header_offset = 50
 			if len(tag_parts) >= 1:
 				try:
-					header_ref = next(filter(lambda image_ref: image_ref["file_name"] == tag_parts[0], all_image_refs), None)
+					header_ref = next((image_ref for image_ref in all_image_refs if image_ref["file_name"] == tag_parts[0]), None)
 					if header_ref != None:
 						page["HeaderRef"] = header_ref
 						if len(tag_parts) >= 2:
@@ -602,34 +618,78 @@ def main():
 			page_headers.append((header_ref, header_offset, index_page_num))
 			pages.append(page)
 			page_names.append(text)
-		elif tag == "Heading":
-			entry = { "Heading": text }
-			if len(subtag) > 0:
-				entry["Date"] = date_from_string(subtag)
-				add_images_before_date(image_refs, entry["Date"], last_entries if last_entries and len(entries) == 0 else entries, index_page_num)
-			entries.append(entry)
-		elif tag == "Text":
-			entries.append({ "Text": text})
-		elif tag == "Image":
-			entries.append({ "Image": text})
-		elif tag == "Movie":
-			movie_entries = text.split('\t')
-			pic_name = movie_entries[0] + ".jpg"
-			movie_ref = next(filter(lambda image_ref: image_ref["file_name"] == pic_name, image_refs), None)
-			if movie_ref:
-				movie_ref["is_movie"] = True
-				movie_ref["movie_text"] = text
-				movie_ref["caption"] = movie_entries[0]
-				movie_ref["index_page_num"] = index_page_num
-				entries.append({ "Movie": movie_ref })
-				movie_refs.append(movie_ref)
-				image_refs.remove(movie_ref)
-		elif tag == "Caption":
-			caption_ref = next(filter(lambda image_ref: image_ref["file_name"] == subtag, all_image_refs), None)
-			if caption_ref:
-				caption_ref["caption"] = text
-			else:
-				print("Image for caption not found:", subtag)
+		elif entries != None:
+			if tag == "Heading":
+				entry = { "Heading": text }
+				if len(subtag) > 0:
+					entry["Date"] = date_from_string(subtag)
+					add_images_before_date(image_refs, entry["Date"], last_entries if last_entries and len(entries) == 0 else entries, index_page_num)
+				entries.append(entry)
+			elif tag == "Timestamp":
+				date = date_from_string(subtag)
+				if date != None:
+					add_images_before_date(image_refs, date, last_entries if last_entries and len(entries) == 0 else entries, index_page_num)
+			elif tag == "Text":
+				entries.append({ "Text": text})
+			elif tag == "Image":
+				tag_parts = subtag.split(",")
+				if len(tag_parts)>=1:
+					entry = { "Image": tag_parts[0] }
+					if len(tag_parts) >= 2:
+						entry["width"] = int(tag_parts[1])
+					entries.append(entry)
+			elif tag == "Movie":
+				caption, text = extract_up_to(text, ",")
+				movie_base, text = extract_up_to(text, ",")
+				heights = {}
+				while len(text) and text.startswith("("):
+					height_info, text = extract_up_to(text[1:], ")")
+					if (len(height_info)>1):
+						height_parts = height_info.split(",")
+						if len(height_parts)==2:
+							heights[int(height_parts[0])] = height_parts[1]
+					if text.startswith(","):
+						text = text[1:]
+
+				if caption!=None and movie_base!=None and len(heights) >= 1:
+					if len(subtag) > 0:
+						pic_name = subtag
+						if not "." in pic_name:
+							pic_name = pic_name + ".jpg"
+					else:
+						pic_name = caption + ".jpg"
+					movie_ref = next((image_ref for image_ref in all_image_refs if image_ref["file_name"] == pic_name), None)
+
+					if movie_ref:
+						movie_ref["is_movie"] = True
+
+						movie_fields = [''] * 10
+						valid_sizes = [(960, 540, 4), (640, 480, 4), (1280, 720, 5), (1920, 1080, 5), (3840, 2160, 9), (640, 360, 6)]
+						for width, height, index in valid_sizes:
+							if height in heights:
+								movie_fields[index] = "{:d},{:d},{}".format(width, height, heights[height])
+
+						movie_fields[3] = caption
+						movie_fields[8] = "*"
+						std_parts = movie_fields[4].split(",")
+						std_parts[2] = std_parts[2].replace("H", "-HEVC")
+						ext_index = movie_base.find(".")
+						movie_fields[4] = "{},{},{}-{}p{}{}".format(std_parts[0], std_parts[1], movie_base[:ext_index], std_parts[1], std_parts[2], movie_base[ext_index:])
+
+						movie_ref["movie_text"] = "\t".join(movie_fields[3:])
+						movie_ref["caption"] = caption
+						movie_ref["index_page_num"] = index_page_num
+						entries.append({ "Movie": movie_ref })
+						movie_refs.append(movie_ref)
+						image_refs.remove(movie_ref)
+				else:
+					print("Invalid movie info:", text)
+			elif tag == "Caption":
+				movie_ref = next((image_ref for image_ref in all_image_refs if image_ref["file_name"] == subtag), None)
+				if caption_ref:
+					caption_ref["caption"] = text
+				else:
+					print("Image for caption not found:", subtag)
 	
 	if len(pages) == 0 and args.album_name:
 		name = args.journal_title[0] if args.journal_title else args.album_name[0]
@@ -646,7 +706,8 @@ def main():
 	
 	# merge movie entries
 	for page in pages:
-		for index, entry in enumerate(page["Entries"]):
+		entries = page["Entries"]
+		for index, entry in enumerate(entries):
 			if "Movie" in entry:
 				movie_list = [ entry["Movie"] ]
 				entries[index] = { "Photos": movie_list }
@@ -720,7 +781,8 @@ def main():
 			print("Creating: ", "movies.txt")
 			file.writelines(movie_refs)
 
-	image_save_start = time.time()
+	image_process_start = time.time()
+	image_save_time = 0
 
 	image_count = len(final_image_refs)
 	if image_count>0:
@@ -747,6 +809,7 @@ def main():
 			if single_thread:
 				result = save_versions(final_image_refs, ref_index, image_folders, page_headers, page_width)
 				add_keys_to_dict(result[2], final_image_refs[result[3]])
+				image_save_time += result[4]
 				print(".", end="", flush=True)
 			else:
 				future = executor.submit(save_versions, final_image_refs, ref_index, image_folders, page_headers, page_width)
@@ -756,11 +819,14 @@ def main():
 			for future in concurrent.futures.as_completed(futures, timeout=None):
 				task_exception = future.exception()
 				if task_exception != None:
+					print()
 					print("Image scaling exception: ", task_exception)
 				result = future.result()
 				if result[0] >= 0:
 					add_keys_to_dict(result[2], final_image_refs[result[3]])
+					image_save_time += result[4]
 				if result[0] < 0:
+					print()
 					print("Image Save Error:", result[1])
 				elif result[0] == 0:
 					print("x", end="", flush=True)
@@ -771,7 +837,7 @@ def main():
 		
 		print()
 
-	image_save_time = time.time() - image_save_start
+	image_process_time = time.time() - image_process_start
 	html_generate_start = time.time()
 	
 	copyright = "©" + str(datetime.today().year) + " RickAndRandy.com"
@@ -837,8 +903,9 @@ def main():
 						print(".", end="", flush=True)
 						did_save = True
 						
-				except OSError:
-					print("\nCannot save: ", detail_path)
+				except OSError as e:
+					print()
+					print("\nError saving: ", detail_path, ",", e)
 		
 			if not did_save:
 				print("x", end="", flush=True)
@@ -924,8 +991,9 @@ def main():
 					with Image.open(os.path.join(journal_folder, image_filename)) as image:
 						width, height = image.size
 					new_image_line = image_line.replace("_ImageURL_", image_filename)
-					new_image_line = new_image_line.replace("_Width_", str(page_width))
-					new_image_line = new_image_line.replace("_Height_", str(int(page_width * height / width)))
+					dest_width = entry["width"] if "width" in entry else page_width
+					new_image_line = new_image_line.replace("_Width_", str(dest_width))
+					new_image_line = new_image_line.replace("_Height_", str(dest_width * height / width))
 					new_lines.append(new_image_line)
 				elif "Photos" in entry:
 					new_lines.extend(make_photo_block(photo_lines.copy(), entry["Photos"], thumb_size))
@@ -960,8 +1028,9 @@ def main():
 						print(".", end="", flush=True)
 						did_save = True
 		
-				except OSError:
-					print("\nCannot save: ", output_path)
+				except OSError as e:
+					print()
+					print("\nError saving: ", output_path, ",", e)
 					
 			if not did_save:
 				print("x", end="", flush=True)
@@ -979,7 +1048,8 @@ def main():
 		print(format_str.format("File scanning:", file_scan_time))
 		if photo_list_time >= 0.0005: print(format_str.format("Enumerate files:", photo_list_time))	
 		if journal_scan_time >= 0.0005: print(format_str.format("Journal scanning: ", journal_scan_time))
-		if image_save_time >= 0.0005: print(format_str.format("Image Save:", image_save_time))
+		if image_process_time >= 0.0005: print(format_str.format("Image Processing:", image_process_time))
+		# if image_save_time >= 0.0005: print(format_str.format("Image saving:", image_save_time))
 		if html_generate_time >= 0.0005: print(format_str.format("HTML Generation:", html_generate_time))
 		print(format_str.format("Total Time:", total_time))
 	
