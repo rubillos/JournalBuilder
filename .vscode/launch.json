@@ -11,9 +11,17 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "args": [
-                "/Users/randy/Sites/PortlandAve/travel/Test",
-            //    "-c",
+                // "/Users/randy/Sites/PortlandAve/Local/2021-05-27-RussAndJustin",
+                // "-a",
+                // "2021-05-27 Russ & Justin",
+                // "-f",
+                // "-c",
+                // "-t"
+
+                "/Users/randy/Sites/PortlandAve/travel/Test1",
+                // "-c",
                 "-wp",
+                // "-s",
                 "-t"
 
                 // "/Users/randy/Sites/PortlandAve/Local/2021-05-13-JimAndKatie",
@@ -21,7 +29,6 @@
                 // "2021-05-13 Jim & Katie",
                 // "-c",
                 // "-t",
-                // "-n",
                 // "-f",
                 // "-d",
                 // "-jt",
