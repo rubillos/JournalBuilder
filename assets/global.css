@@ -12,7 +12,7 @@ p { -webkit-margin-before: 0.4em;}
 #header { margin: 0 15px; }
 #headerImg img { background-color:#BBB; margin: 0; }
 #headerwidth { width: 805px; height: 1px; display: block; whitespace: pre; }
-#header h1 { font-size: 2.1em; color: #747678; font-weight: lighter; float:left; margin: 0 0 10px; padding: 12px 0 0; }
+#header h1 { font-size: 2.1em; color: #747678; font-weight: lighter; float:left; margin: 0 0 10px; padding: 12px 0 0; text-align: left; white-space: nowrap; }
 
 div.clear { clear: both; }
 
@@ -25,19 +25,15 @@ ul#nav li a, ul#nav li a:visited, ul#nav li a:active { text-decoration: none; co
 ul#nav li a:hover { color: #444; }
 ul#nav #selection { color: #eee; background-color: #777; padding-top: 5px; padding-bottom: 5px; padding-left: 10px; padding-right: 10px; }
 ul#nav #nonselection { padding-top: 5px; padding-bottom: 5px; padding-left: 10px; padding-right: 10px; }
-ul#nav .index { width:60px;}
 ul#nav .previous { white-space: pre; width: 15px; height: 10px;}
-ul#nav .previous a { padding: 0 4px 0 4px; background: url("../img/previous.gif") no-repeat left center; }
-ul#nav .previous a:hover { background: url("../img/previous_active.gif") no-repeat left center;}
+ul#nav .previous a { padding: 0 4px 0 4px; background: url("../assets/previous.gif") no-repeat left center; }
+ul#nav .previous a:hover { background: url("../assets/previous_active.gif") no-repeat left center;}
 ul#nav .previous_text {display: none;}
-ul#nav .pageNumber { padding:0 7px 0 2px; }
 ul#nav .pagnation { padding: 0 3px 0 3px; }
 ul#nav .next { white-space: pre; width: 15px; height: 10px}
-ul#nav .next a { padding: 0 4px 0 4px; background: url("../img/next.gif") no-repeat right center;}
-ul#nav .next a:hover { background: url("../img/next_active.gif") no-repeat right center;}
+ul#nav .next a { padding: 0 4px 0 4px; background: url("../assets/next.gif") no-repeat right center;}
+ul#nav .next a:hover { background: url("../assets/next_active.gif") no-repeat right center;}
 ul#nav .next_text {display: none;}
-
-.detail #nav { margin: 0 auto 0 auto; }
 
 #content { clear: left; margin: 15px; padding: 0; }
 
