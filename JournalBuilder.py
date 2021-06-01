@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3.9
 
 # pip3 install pillow-simd
 # pip3 install pyheif
@@ -13,23 +13,30 @@ import pyheif
 import exifread
 import concurrent.futures
 import html  
+import webbrowser
 
 parser = argparse.ArgumentParser(description='Generate a web journal')
 
-parser.add_argument("folder", help="Folder containing source files", nargs="?")
+parser.add_argument("folder", help="Destination folder", nargs=1)
+parser.add_argument("-c", dest="clean", help="Remove all existing output files", action="store_true")
+parser.add_argument("-t", dest="timings", help="Print timing information", action="store_true")
+parser.add_argument("-s", dest="single_thread", help="Run all tasks on the main thread", action="store_true")
 parser.add_argument("-?", dest="documentation", help="Show user manual", action="store_true")
+parser.add_argument("-nc", dest="no_cache", help="Prevent caching of images and links (for debugging)", action="store_true")
+parser.add_argument("-o", dest="open_result", help="Open the output journal in browser", action="store_true")
 
 group = parser.add_argument_group("album settings")
-group.add_argument("-j", dest="journal", help="journal information file (defaults to 'journal.txt')", type=str, nargs=1)
+group.add_argument("-j", dest="journal", help="journal information file (defaults to 'journal.txt' in destination folder)", type=str, nargs=1)
 group.add_argument("-a", dest="album_name", help="Get images from Photos album", type=str, nargs=1)
-group.add_argument("-i", dest="images_folder", help="Source image folder (defaults to 'images')", type=str, nargs=1)
-group.add_argument("-d", dest="date_sort", help="Show images in chronological order (Photos album only)", action="store_true")
+group.add_argument("-i", dest="images_folder", help="Source image folder (defaults to 'images' in destination folder)", type=str, nargs=1)
+group.add_argument("-d", dest="date_sort", help="Show images in chronological order (Photos album only), default is album order", action="store_true")
 group.add_argument("-f", dest="favorites", help="Show only favorite images (Photos album only)", action="store_true")
 
 group = parser.add_argument_group("journal control")
 group.add_argument("-jt", dest="journal_title", help="Journal title", type=str, nargs=1)
 group.add_argument("-ts", dest="thumb_size", help="Thumbnail size", type=int, nargs=1, default=[190])
 group.add_argument("-is", dest="image_size", help="Base image size", type=int, nargs=1, default=[1024])
+group.add_argument("-r", dest="reorder_thumbs", help="Re-order thumbs to minimize page height", action="store_true")
 group.add_argument("-hh", dest="header_height", help="Header height", type=int, nargs=1, default=[225])
 group.add_argument("-q", dest="jpeg_quality", help="Set output JPEG quality level ", type=str, choices=["low", "medium", "high", "very_high", "maximum"], default="high")
 
@@ -40,10 +47,6 @@ group.add_argument("-wh", dest="overwrite_headerimages", help="Overwrite existin
 group.add_argument("-wp", dest="overwrite_pages", help="Overwrite existing html pages", action="store_true")
 group.add_argument("-wm", dest="overwrite_movies", help="Overwrite existing movies.txt", action="store_true")
 group.add_argument("-wa", dest="overwrite_assets", help="Overwrite existing assets folder", action="store_true")
-
-parser.add_argument("-c", dest="clean", help="Remove all existing output files", action="store_true")
-parser.add_argument("-t", dest="timings", help="Print timing information", action="store_true")
-parser.add_argument("-s", dest="single_thread", help="Run all tasks on the main thread", action="store_true")
 
 args = parser.parse_args()
 
@@ -56,9 +59,11 @@ if args.documentation:
 	quit()
 
 if args.folder:
-	journal_folder = args.folder
+	destination_folder = args.folder[0]
+	if not os.path.isdir(destination_folder):
+		parser.error("Destination folder not found")
 else:
-	parser.error("a destination folder path is required")
+	parser.error("A destination folder path is required")
 
 overwrite_images = args.overwrite or args.overwrite_images
 overwrite_headers = args.overwrite or args.overwrite_headerimages
@@ -92,11 +97,42 @@ detail_root = "large-"
 
 jpeg_quality = {"low":"web_low", "medium":"web_medium", "high":"web_high", "very_high":"web_very_high", "maximum":"web_maximum"}
 
+def path_is_heif(file_path):
+	return pathlib.Path(file_path).suffix.lower() in ['.heif',  '.heic']
+
+def size_of_image_file(file_ref, orientation=0):
+	image_size = None
+	try:
+		is_heif = False
+
+		if isinstance(file_ref, str):
+			path = file_ref
+		else:
+			path = file_ref.name
+
+		if path_is_heif(path):
+			heif_file = pyheif.read(file_ref)
+			image = Image.frombytes(heif_file.mode, heif_file.size, heif_file.data, "raw", heif_file.mode, heif_file.stride,)
+			is_heif = True
+		else:
+			image = Image.open(file_ref)
+
+		if image:
+			image_size = image.size
+
+			if not is_heif:
+				if orientation == 6 or orientation == 8:
+					image_size = (image_size[1], image_size[0])
+	except:
+		pass
+
+	return image_size
+
 def scaled_size(input_size, max_size):
 	width, height = input_size
 	max_size = min(max_size, max(width, height))
 	
-	if (width > height):
+	if width > height:
 		height = round(max_size / width * height)
 		width = max_size
 	else:
@@ -105,35 +141,47 @@ def scaled_size(input_size, max_size):
 	
 	return (width, height)
 	
-def save_scaled(image, size, path):
-	scaled_image = image.resize(size, resample=Image.LANCZOS)
-	scaled_image.save(path, "JPEG", quality=args.jpeg_quality)
-	
-def save_scaled_header(image, dest_size, offset, path):
-	src_slice_height = int(image.size[0] * dest_size[1] / dest_size[0])
-	src_top = int((image.size[1]-src_slice_height) * offset / 100)
-	cropped_image = image.resize(dest_size, box=(0, src_top, image.size[0], src_top+src_slice_height), resample=Image.LANCZOS)
-	cropped_image.save(path, "JPEG", quality=args.jpeg_quality)
-
 def save_versions(image_refs, ref_index, image_folders, page_headers, page_width):
+
+	def save_scaled(image, size, path):
+		scaled_image = image.resize(size, resample=Image.LANCZOS)
+		scaled_image.save(path, "JPEG", quality=args.jpeg_quality)
+
+	def save_scaled_header(image, dest_size, offset, path):
+		src_slice_height = int(image.size[0] * dest_size[1] / dest_size[0])
+		src_top = int((image.size[1]-src_slice_height) * offset / 100)
+		cropped_image = image.resize(dest_size, box=(0, src_top, image.size[0], src_top+src_slice_height), resample=Image.LANCZOS)
+		cropped_image.save(path, "JPEG", quality=args.jpeg_quality)
+
+	def load_image(image, orientation):
+		if orientation == 3:
+			image = image.rotate(180, expand=True)
+		elif orientation == 6:
+			image = image.rotate(270, expand=True)
+		elif orientation == 8:
+			image = image.rotate(90, expand=True)
+		else:
+			image.load()
+		return image
+
 	start_time = time.time()
 	result = 0
 	error_msg = ""
 	new_keys = None
 	image_ref = image_refs[ref_index]
-	filepath = image_ref["file_path"]
+	file_path = image_ref["file_path"]
 	try:
 		image = None
 		is_heif = False
 
-		if pathlib.Path(filepath).suffix.lower() in ['.heif',  '.heic']:
-			heif_file = pyheif.read(filepath)
+		if path_is_heif(file_path):
+			heif_file = pyheif.read(file_path)
 			image = Image.frombytes(heif_file.mode, heif_file.size, heif_file.data, "raw", heif_file.mode, heif_file.stride,)
 			is_heif = True
 		else:
-			image = Image.open(filepath)
+			image = Image.open(file_path)
 
-		if image != None:
+		if image:
 			is_loaded = False
 			image_size = image.size
 			orientation = 0
@@ -153,7 +201,7 @@ def save_versions(image_refs, ref_index, image_folders, page_headers, page_width
 			new_keys["image_size"] = image_size
 
 			for folder_name, name_root, size in image_folders:
-				output_path = os.path.join(journal_folder, folder_name, picture_url(name_root, image_ref["picture_num"]))
+				output_path = os.path.join(destination_folder, folder_name, picture_url(name_root, image_ref["picture_num"], False))
 
 				if overwrite_images or not os.path.isfile(output_path):
 					try:
@@ -167,17 +215,17 @@ def save_versions(image_refs, ref_index, image_folders, page_headers, page_width
 						result = -1
 						error_msg = "Error saving: " + output_path + ", " + str(e)
 
-				filename = image_ref["file_name"]
+				file_name = image_ref["file_name"]
 				header_info = None
 				if len(page_headers) > 0:
-					header_info = next((head_item for head_item in page_headers if head_item[0] and head_item[0]["file_name"] == filename), None)
+					header_info = next((head_item for head_item in page_headers if head_item[0] and head_item[0]["file_name"] == file_name), None)
 
 				if header_info and header_info[0]:
 					header_size = (page_width, header_height)
 					scales = [1, 2, 3]
 					suffixes = ["", "@2x", "@3x"]
 					for i in range(3):
-						output_path = os.path.join(journal_folder, header_image_url(header_info[2], suffixes[i]))
+						output_path = os.path.join(destination_folder, header_image_url(header_info[2], suffix=suffixes[i], for_html=False))
 						if overwrite_headers or not os.path.isfile(output_path):
 							try:
 								if not is_loaded:
@@ -190,7 +238,7 @@ def save_versions(image_refs, ref_index, image_folders, page_headers, page_width
 								error_msg = "Error saving: " + output_path + ", " + str(e)
 		else:
 			result = -1
-			error_msg = "Cannot open: " + filepath
+			error_msg = "Cannot open: " + file_path
 	except OSError as e:
 		result = -1
 		error_msg = "Error generating images: " + str(e)
@@ -205,18 +253,18 @@ def replace_keys(lines, src_key, replace_key):
 def remove_tag(lines, tag):
 	for index, line in enumerate(lines):
 		tag_index = line.find(tag)
-		if (tag_index >= 0):
+		if tag_index >= 0:
 			line_len = len(line)
 			tag_end_index = tag_index + len(tag)
 			while tag_index>0 and line[tag_index-1]==" ":
-				tag_index = tag_index - 1
+				tag_index -= 1
 			if tag_end_index<line_len-1 and line[tag_end_index]=="=":
-				tag_end_index = tag_end_index+1
+				tag_end_index += 1
 				if tag_end_index<line_len-2 and line[tag_end_index]=='"':
-					tag_end_index = tag_end_index+1
+					tag_end_index += 1
 					while tag_end_index<line_len and line[tag_end_index]!='"':
-						tag_end_index = tag_end_index + 1
-					tag_end_index = tag_end_index+1
+						tag_end_index += 1
+					tag_end_index += 1
 			lines[index] = line[:tag_index] + line[tag_end_index:]
 			
 def remove_lines_with_key(lines, key):
@@ -228,7 +276,7 @@ def remove_lines_with_key(lines, key):
 			index += 1
 	
 def format_shutter(speed):
-	if (speed <= 0.5):
+	if speed <= 0.5:
 		return "1/{:d}s".format(int(1.0 /speed))
 	else:
 		return str(speed) + "s"
@@ -254,98 +302,101 @@ def get_next_line(src):
 			text = text + '\n' + src.pop(0).strip()
 		
 	return (tag, subtag, text)
+
+date_format = "%Y:%m:%d %H:%M:%S"
+date_formats = [date_format, "%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"]
 	
 def date_from_string(date_string):
-	date_time = None
-
-	try:
-		date_time = datetime.strptime(date_string, "%Y:%m:%d %H:%M:%S")
-	except:
-		try:
-			date_time = datetime.strptime(date_string, "%Y-%m-%d %H:%M:%S")
-		except:
+	if len(date_string)>0:
+		for format in date_formats:			
 			try:
-				date_time = datetime.strptime(date_string, "%Y-%m-%d %H:%M")
+				date_time = datetime.strptime(date_string, format)
+				if "%H" not in format:
+					date_time = date_time.replace(hour=1, minute=1)
+				return date_time
 			except:
-				try:
-					date_time = datetime.strptime(date_string, "%Y-%m-%d")
-				except:
-					print("Failed to parse date", date_string)
-	
-	return date_time
+				pass	
+		print("Failed to parse date", date_string)
+	return None
 
 def add_images_before_date(refs, before_date, dest_list, index_page_num):
 	if len(refs):
 		if before_date:
-			ref_list = []
+			new_refs = []
 			while len(refs) > 0 and refs[0]["image_date"] < before_date:
 				ref = refs.pop(0)
-				ref["index_page_num"] = index_page_num
-				ref_list.append(ref)
-			if len(ref_list) > 0:
-				dest_list.append({ "Photos": ref_list })
+				new_refs.append(ref)
 		else:
-			refs_copy = refs.copy()
-			for ref in refs_copy:
-				ref["index_page_num"] = index_page_num
-			dest_list.append({ "Photos": refs_copy })
+			new_refs = refs.copy()
 			refs.clear()
+			
+		if len(new_refs) > 0:
+			for ref in new_refs:
+				ref["index_page_num"] = index_page_num
+			dest_list.append({ "Photos": new_refs })
 
 def index_of_substring(list, substr, start=0):
-	for index, item in enumerate(list):
+	for index, item in enumerate(list[start:], start):
 		if substr in item:
 			return index
 	return -1
 
-def extract_section(lines, starttext, endtext):
-	index = index_of_substring(lines, starttext)
-	if index == -1:
+def extract_section(lines, starttext, endtext=None):
+	start_index = index_of_substring(lines, starttext)
+	if start_index == -1:
 		return (0, None)
-	if endtext != None:
-		end_index = index_of_substring(lines, endtext, index+1)
+	if endtext:
+		end_index = index_of_substring(lines, endtext, start_index+1)
 		if end_index == -1:
 			return (0, None)
 		items = []
-		for i in range(index, end_index+1):
-			items.append(lines.pop(index))
-		return (index, items)
+		for i in range(start_index, end_index+1):
+			items.append(lines.pop(start_index))
+		return (start_index, items)
 	else:
-		return (index, lines.pop(index))
+		return (start_index, lines.pop(start_index))
 
-def index_url(index_num, num_indexes):
+def cache_suffix(for_html=True):
+	if for_html and args.no_cache:
+		return "?{:d}".format(int((time.time() * 10000) % 10000))
+	else:
+		return ""
+
+def index_url(index_num, for_html=True, num_indexes=100000):
 	if index_num == 0:
 		return previous_external_url if previous_external_url else None
 	elif index_num == 1:
-		return "index.html"
+		return "{}.html{}".format(index_root, cache_suffix(for_html))
 	elif index_num == num_indexes+1:
 		return next_external_url if next_external_url else None
 	else:
-		return "index{}.html".format(index_num)
-		
-def header_image_url(page_num, suffix=""):
-	return "{} - {:d}{}.jpg".format(header_name_root, page_num, suffix)
+		return "{}{}.html{}".format(index_root, index_num, cache_suffix(for_html))
 
-def picture_url(name_root, page_num):
-	return "{}{}.jpg".format(name_root, page_num)
+def detail_url(picture_number):
+	return("{}{}.html".format(detail_root, picture_number))
+	
+def header_image_url(page_num, for_html=True, suffix=""):
+	return "{} - {:d}{}.jpg{}".format(header_name_root, page_num, suffix, cache_suffix(for_html))
+
+def picture_url(name_root, page_num, for_html=True):
+	return "{}{}.jpg{}".format(name_root, page_num, cache_suffix(for_html))
 
 def make_nav_bar(nav_lines, page_index, page_names):
 	nav_count = len(page_names)
-	selected_index, selected_line = extract_section(nav_lines, 'rkid="off"', None)
-	un_selected_index, un_selected_line = extract_section(nav_lines, 'rkid="on"', None)
+	selected_index, selected_line = extract_section(nav_lines, 'rkid="off"')
+	un_selected_index, un_selected_line = extract_section(nav_lines, 'rkid="on"')
 
-	next_url = index_url(page_index+1, nav_count)
-	prev_url = index_url(page_index-1, nav_count)
+	next_url = index_url(page_index+1, num_indexes=nav_count)
+	prev_url = index_url(page_index-1, num_indexes=nav_count)
 	
 	for i in range(0, nav_count):
 		if i+1 == page_index:
 			nav_item = selected_line
 		else:
-			nav_item = un_selected_line.replace("_IndexPageURL_", index_url(i+1, nav_count))
-		
+			nav_item = un_selected_line.replace("_IndexPageURL_", index_url(i+1, num_indexes=nav_count))
 		nav_item = nav_item.replace("_PageName_", page_names[i])
-		
 		nav_lines.insert(selected_index, nav_item)
-		selected_index = selected_index + 1
+		selected_index += 1
 
 	if prev_url:
 		replace_keys(nav_lines, "_PreviousPageURL_", prev_url)
@@ -371,14 +422,14 @@ def make_nav_bar(nav_lines, page_index, page_names):
 	remove_tag(nav_lines, "leaveonlastpage")
 	return nav_lines
 	
-def insert_array_into_array(src, dest, index):
-	for item in src:
-		dest.insert(index, item)
-		index = index+1
-
-	return index
-
 def make_photo_block(photo_lines, image_refs, thumb_size):
+
+	def insert_array_into_array(src, dest, index):
+		for item in src:
+			dest.insert(index, item)
+			index += 1
+		return index
+
 	row_index, row_lines = extract_section(photo_lines, "picrow", "endpicrow")
 	image_index, image_lines = extract_section(row_lines, "imagediv", "endimagediv")
 	
@@ -395,7 +446,7 @@ def make_photo_block(photo_lines, image_refs, thumb_size):
 		new_image_lines = image_lines.copy()
 		new_size = scaled_size(image_ref["image_size"], thumb_size)
 		
-		replace_keys(new_image_lines, "_DetailPageURL_", detail_root + image_ref["picture_num"] + ".html")
+		replace_keys(new_image_lines, "_DetailPageURL_", detail_url(image_ref["picture_num"]))
 		replace_keys(new_image_lines, "_ThumbURL_", picture_url(thumb_name_root, image_ref["picture_num"]))
 		replace_keys(new_image_lines, "_ThumbWidth_", str(new_size[0]))
 		replace_keys(new_image_lines, "_ThumbHeight_", str(new_size[1]))
@@ -406,7 +457,7 @@ def make_photo_block(photo_lines, image_refs, thumb_size):
 			remove_lines_with_key(new_image_lines, "_metavalue_")			
 		
 		current_image_index = insert_array_into_array(new_image_lines, current_row_lines, current_image_index)
-		row_count = row_count + 1
+		row_count += 1
 		
 	if row_count > 0:
 		insert_array_into_array(current_row_lines, photo_lines, row_index)		
@@ -418,21 +469,6 @@ def pluralize(str, count, pad=False):
 		return str+" " if pad else str
 	else:
 		return str+"s"
-
-def load_image(image, orientation):
-	if orientation == 3:
-		image=image.rotate(180, expand=True)
-	elif orientation == 6:
-		image = image.rotate(270, expand=True)
-	elif orientation == 8:
-		image = image.rotate(90, expand=True)
-	else:
-		image.load()
-	return image
-
-def add_keys_to_dict(src_dict, dest_dict):
-	for key, value in src_dict.items():
-		dest_dict[key] = value
 
 def extract_up_to(text, substr):
 	src_text = text
@@ -452,19 +488,17 @@ def main():
 	global base_image_size
 	global header_height
 
-	image_refs = []
+	unplaced_image_refs = []
 
 	# read journal file
 	journal_file_path = args.journal if args.journal else "journal.txt"
 	if not "/" in journal_file_path:
-		journal_file_path = os.path.join(journal_folder, journal_file_path)
+		journal_file_path = os.path.join(destination_folder, journal_file_path)
 	if os.path.isfile(journal_file_path):
 		with open(journal_file_path, "r") as file:
 			journal_src = file.readlines()
-	elif args.album_name:
-		journal_src = []
 	else:
-		parser.error("journal.txt not found!")
+		journal_src = []
 		
 	# scan for date overrides
 	date_overrides = {}
@@ -495,61 +529,72 @@ def main():
 		photosdb = osxphotos.PhotosDB()
 		print(" done.")
 		album_info = next((info for info in photosdb.album_info if info.title == args.album_name[0]), None)
-		if album_info != None:
+		if album_info:
 			for photo in album_info.photos:
 				if photo.isphoto and not photo.hidden and (not args.favorites or photo.favorite):
 					photo_path = photo.path_edited if photo.path_edited else photo.path
-					if photo_path != None:
+					if photo_path:
 						file_paths.append((photo.original_filename, photo_path, photo.title, photo.date))
 					else:
-						print("File missing for", photo.filename)
+						print("Warning: File missing for", photo.filename)
 		else:
-			parser.error("Photos album not found: " + args.album_name)
+			parser.error("Photos album not found: " + args.album_name[0])
 	else:
-		images_path = args.images_folder if args.images_folder else "images"
-		if not "/" in images_path:
-			images_path = os.path.join(journal_folder, images_path)
-		if os.path.isdir(images_path):
-			for filename in os.listdir(images_path):
-				file_paths.append((filename, os.path.join(images_path, filename), None, None))
+		images_folder_path = args.images_folder if args.images_folder else "images"
+		if not "/" in images_folder_path:
+			images_folder_path = os.path.join(destination_folder, images_folder_path)
+		if os.path.isdir(images_folder_path):
+			for file_name in os.listdir(images_folder_path):
+				file_paths.append((file_name, os.path.join(images_folder_path, file_name), None, None))
 			
 	if len(file_paths) == 0:
 		parser.error("No source photos found! Please specify an album name (-a) or an image folder (-i).")
 
 	photo_list_time = time.time() - photo_list_start
 		
-	for filename, filepath, title, photo_date in file_paths:
-		if not filename.startswith('.') and os.path.isfile(filepath):
-			with open(filepath, "rb") as image_file:
+	for file_name, file_path, title, photo_date in file_paths:
+		if not file_name.startswith('.') and os.path.isfile(file_path):
+			with open(file_path, "rb") as image_file:
 				tags = exifread.process_file(image_file, details=False)
 				keys = tags.keys()
 				image_ref = {}
 	
-				image_ref["file_name"] = filename
-				image_ref["file_path"] = filepath
+				image_ref["file_name"] = file_name
+				image_ref["file_path"] = file_path
 				
-				if filename in date_overrides:
-					image_date = date_overrides[filename]
-				elif photo_date != None:
-					image_date = photo_date.strftime("%Y:%m:%d %H:%M:%S")
+				if file_name in date_overrides:
+					image_date = date_overrides[file_name]
+				elif photo_date:
+					image_date = photo_date.strftime(date_format)
 				else:
 					if 'Image DateTime' in tags:
 						image_date = tags['Image DateTime'].values
 					else:
-						file_time = os.path.getmtime(filepath)
-						image_date = time.strftime("%Y:%m:%d %H:%M:%S", time.localtime(file_time))
-						print("Using os date for", filename, image_date)
+						file_time = os.path.getmtime(file_path)
+						image_date = time.strftime(date_format, time.localtime(file_time))
+						print("Warning: Using os date for", file_name, image_date)
 				
 				image_ref["datetime"] = image_date
 				image_ref["image_date"] = date_from_string(image_date)
 				image_ref["orientation"] = tags['Image Orientation'].values[0] if 'Image Orientation' in keys else 0
 
-				if title != None:
+				if "EXIF ExifImageWidth" in tags and "EXIF ExifImageLength" in tags:
+					image_ref["aspect"] = (float(tags["EXIF ExifImageWidth"].values[0]) / float(tags["EXIF ExifImageLength"].values[0]))
+				elif args.reorder_thumbs:
+					image_size = size_of_image_file(image_file, image_ref["orientation"])
+					if image_size:
+						image_ref["aspect"] = float(image_size[0] / image_size[1])
+					else:
+						image_ref["aspect"] = 1.0
+				else:
+					image_ref["aspect"] = 1.0
+
+				if title:
 					image_ref["caption"] = title
 				elif 'Image ImageDescription' in keys:
 					image_ref["caption"] = tags['Image ImageDescription'].values
 				
-				exif_data = [ filename, image_date ]
+				exif_data = [ file_name, image_date ]
 				
 				if 'EXIF ExposureTime' in keys:
 					exif_data.append(format_shutter(float(tags['EXIF ExposureTime'].values[0])))
@@ -565,16 +610,16 @@ def main():
 					exif_data.append(tags['Image Make'].values + " " + tags['Image Model'].values)
 					
 				image_ref["exif"] = " &bull; ".join(exif_data)
-				image_refs.append(image_ref)
+				unplaced_image_refs.append(image_ref)
 
 	file_scan_time = time.time() - file_scan_start
 
 	# sort based on date
 	if not from_photos or args.date_sort:
-		image_refs.sort(key=lambda x: x.get('image_date'))
-	
+		unplaced_image_refs.sort(key=lambda image_ref: image_ref['image_date'])
+
 	# generate journal structure
-	all_image_refs = image_refs.copy()
+	all_image_refs = unplaced_image_refs.copy()
 	pages = []
 	page_names = []
 	page_headers = []
@@ -592,43 +637,42 @@ def main():
 		if tag == "Site":
 			journal["Title"] = text
 		elif tag == "Page" or tag == "Epilog":
-			index_page_num = index_page_num + 1
+			index_page_num += 1
 			last_entries = entries
 			entries = []
 			if tag == "Epilog":
 				text = "Epilog"
-				add_images_before_date(image_refs, None, last_entries if last_entries and len(entries) == 0 else entries, index_page_num-1)
-			page = { "Title": text, "Entries": entries }
+				add_images_before_date(unplaced_image_refs, None, last_entries if last_entries is not None else entries, index_page_num-1)
+			page = { "Entries": entries }
 			tag_parts = subtag.split(",")
 			header_ref = None
 			header_offset = 50
 			if len(tag_parts) >= 1:
 				try:
 					header_ref = next((image_ref for image_ref in all_image_refs if image_ref["file_name"] == tag_parts[0]), None)
-					if header_ref != None:
-						page["HeaderRef"] = header_ref
+					if header_ref:
 						if len(tag_parts) >= 2:
 							header_offset = int(tag_parts[1])
-							page["HeaderOffset"] = header_offset
 					else:
-						print("Header image not found:", tag_parts[0])
+						print("Warning: Header image not found:", tag_parts[0])
 				except:
-					print("Header image not found:", tag_parts[0])
+					print("Warning: Header image not found:", tag_parts[0])
 					
 			page_headers.append((header_ref, header_offset, index_page_num))
 			pages.append(page)
 			page_names.append(text)
-		elif entries != None:
+		elif entries is not None:
 			if tag == "Heading":
 				entry = { "Heading": text }
-				if len(subtag) > 0:
-					entry["Date"] = date_from_string(subtag)
-					add_images_before_date(image_refs, entry["Date"], last_entries if last_entries and len(entries) == 0 else entries, index_page_num)
+				date = date_from_string(subtag)
+				if date:
+					entry["Date"] = date
+					add_images_before_date(unplaced_image_refs, date, last_entries if last_entries is not None and len(entries) == 0 else entries, index_page_num)
 				entries.append(entry)
 			elif tag == "Timestamp":
 				date = date_from_string(subtag)
-				if date != None:
-					add_images_before_date(image_refs, date, last_entries if last_entries and len(entries) == 0 else entries, index_page_num)
+				if date:
+					add_images_before_date(unplaced_image_refs, date, last_entries if last_entries is not None and len(entries) == 0 else entries, index_page_num)
 			elif tag == "Text":
 				entries.append({ "Text": text})
 			elif tag == "Image":
@@ -644,14 +688,14 @@ def main():
 				heights = {}
 				while len(text) and text.startswith("("):
 					height_info, text = extract_up_to(text[1:], ")")
-					if (len(height_info)>1):
+					if len(height_info)>1:
 						height_parts = height_info.split(",")
 						if len(height_parts)==2:
 							heights[int(height_parts[0])] = height_parts[1]
 					if text.startswith(","):
 						text = text[1:]
 
-				if caption!=None and movie_base!=None and len(heights) >= 1:
+				if caption and movie_base and len(heights) >= 1:
 					if len(subtag) > 0:
 						pic_name = subtag
 						if not "." in pic_name:
@@ -681,40 +725,108 @@ def main():
 						movie_ref["index_page_num"] = index_page_num
 						entries.append({ "Movie": movie_ref })
 						movie_refs.append(movie_ref)
-						image_refs.remove(movie_ref)
+						unplaced_image_refs.remove(movie_ref)
 				else:
-					print("Invalid movie info:", text)
+					print("Warning: Invalid movie info:", text)
 			elif tag == "Caption":
-				movie_ref = next((image_ref for image_ref in all_image_refs if image_ref["file_name"] == subtag), None)
+				caption_ref = next((image_ref for image_ref in all_image_refs if image_ref["file_name"] == subtag), None)
 				if caption_ref:
 					caption_ref["caption"] = text
 				else:
-					print("Image for caption not found:", subtag)
+					print("Warning: Image for caption not found:", subtag)
 	
 	if len(pages) == 0 and args.album_name:
 		name = args.journal_title[0] if args.journal_title else args.album_name[0]
 		journal["Title"] = name
 		entries = []
-		page = {"Title": name, "Entries": entries}
+		page = { "Entries": entries }
 		page_headers.append((None, 0, index_page_num))
 		pages.append(page)
 		page_names.append(name)
 		index_page_num = 1
 
-	if entries != None:
-		add_images_before_date(image_refs, None, entries, index_page_num)
+	if entries is not None:
+		add_images_before_date(unplaced_image_refs, None, entries, index_page_num)
 	
 	# merge movie entries
 	for page in pages:
 		entries = page["Entries"]
-		for index, entry in enumerate(entries):
+		index = 0
+		while index < len(entries):
+			entry = entries[index]
 			if "Movie" in entry:
 				movie_list = [ entry["Movie"] ]
 				entries[index] = { "Photos": movie_list }
 				while index < len(entries)-1 and "Movie" in entries[index+1]:
 					next_movie = entries.pop(index+1)
 					movie_list.append(next_movie["Movie"])
+			index += 1
 	
+	# re-order thumbnails slightly to minimize page height
+	if args.reorder_thumbs:
+		for page in pages:
+			for entry in page["Entries"]:
+				if "Photos" in entry:
+					photos = entry["Photos"]
+					if len(photos)>4:
+						line_tall_count = []
+						line_count = int((len(photos)+3) / 4)
+
+						def find_wide_tall(first, second, line_index):
+							def find_item(tall, line_index):
+								start_index = line_index * 4
+								for index in range(start_index, min(len(photos), start_index+4)):
+									if photos[index]["tall"] == tall:
+										return index
+								return -1
+
+							return find_item(first, line_index), find_item(second, line_index+1)
+
+						def swap_photos(src_index, dest_index):
+							src_photo = photos[src_index]
+							dest_photo = photos[dest_index]
+							photos[dest_index] = src_photo
+							photos.pop(src_index)
+							photos.insert((src_index % 4) * 4 + 3, dest_photo)
+
+						def move_photo(src_index, dest_index):
+							src_photo = photos.pop(src_index)
+							dest_index = dest_index+1 if dest_index % 4 == 0 else dest_index
+							photos.insert(dest_index, src_photo)
+
+						tall_count = 0
+						row_count = 0
+						for index, photo in enumerate(photos):
+							tall = photo["aspect"]<1.15 if "aspect" in photo else False
+							photo["tall"] = tall
+							tall_count += 1 if tall else 0
+							row_count += 1
+							if row_count == 4 or index == len(photos)-1:
+								line_tall_count.append(tall_count)
+								tall_count = 0
+								row_count = 0
+
+						reorder_info = { (1,3):swap_photos, (3,1):swap_photos, (1,1):move_photo, (3,3):move_photo }
+						for index in range(0, line_count-1):
+							counts = (line_tall_count[index], line_tall_count[index+1])
+							if counts in reorder_info:
+								func = reorder_info[counts]
+								src_index, dest_index = find_wide_tall(counts[0]==1, counts[1]==1, index)
+								func(src_index, dest_index)
+								line_tall_count[index] += -1 if counts[0]==1 else 1
+								line_tall_count[index+1] += -1 if counts[1] == 1 else 1
+
+						pair_moves = { "0101":(1, 2), "0110":(0, 2), "1001":(3, 1), "1010":(2, 1), "011":(0, 2) }
+						for index in range(line_count):
+							if line_tall_count[index] == 2:
+								key = ""
+								line_index = index * 4
+								for i in range(line_index, min(len(photos), line_index+4)):
+									key += "1" if photos[i]["tall"] else "0"
+								if key in pair_moves:
+									src_index, dest_index = pair_moves[key]
+									photos.insert(line_index+dest_index, photos.pop(line_index+src_index))
+
 	#build the image list
 	final_image_refs = []
 	for page in pages:
@@ -722,9 +834,9 @@ def main():
 			if "Photos" in entry:
 				final_image_refs.extend(entry["Photos"])
 	
-	# set the target image names
-	for image_index, image_ref in enumerate(final_image_refs):
-		image_ref["picture_num"] = str(image_index+1)
+	# set the target image numbers
+	for image_index, image_ref in enumerate(final_image_refs, 1):
+		image_ref["picture_num"] = str(image_index)
 	
 	# start output phase
 	journal_scan_time = time.time() - journal_scan_start
@@ -743,43 +855,47 @@ def main():
 	
 	# clean existing output files
 	if args.clean:
-		print("Cleaning journal folder", end="", flush=True)
+		print("Cleaning destination folder", end="", flush=True)
 		folders_removed = 0
 		files_removed = 0
-		for name in os.listdir(journal_folder):
-			path= os.path.join(journal_folder, name)
+		for name in os.listdir(destination_folder):
+			path= os.path.join(destination_folder, name)
 			if name.startswith(thumb_folder_root) or name.startswith(picture_folder_root) or name=="assets":
 				print(".", end="", flush=True)
 				shutil.rmtree(path)
 				folders_removed += 1
 			elif name.startswith(thumb_name_root) or name.startswith(picture_name_root) or name.startswith(header_name_root) or name.startswith(index_root) or name.startswith(detail_root) or name=="movies.txt":
 				print(".", end="", flush=True)
-				files_removed += 1
 				os.remove(path)
+				files_removed += 1
 		print()
-		print("  (Removed {:d} {} and {:d} {})".format(folders_removed, pluralize("folder", folders_removed), files_removed, pluralize("file", files_removed)))
+		if files_removed>0 or folders_removed>0:
+			print("  (Removed {:d} {} and {:d} {})".format(folders_removed, pluralize("folder", folders_removed), files_removed, pluralize("file", files_removed)))
 
 	#copy assets folder
-	dest_assets_path = os.path.join(journal_folder, "assets")
+	dest_assets_path = os.path.join(destination_folder, "assets")
 	if overwrite_assets and os.path.isdir(dest_assets_path):
 		shutil.rmtree(dest_assets_path)
 	if not os.path.isdir(dest_assets_path):
 		print("Copying assets folder")
 		src_assets_path = os.path.join(script_path, "assets")
-		shutil.copytree(src_assets_path, dest_assets_path)
-	
+		try:
+			shutil.copytree(src_assets_path, dest_assets_path)
+		except OSError as e:
+			print("\nError copying:", dest_assets_path, ",", e)
+
 	#save movies.txt
-	movie_file_path = os.path.join(journal_folder, "movies.txt")
+	movie_file_path = os.path.join(destination_folder, "movies.txt")
 	if not os.path.isfile(movie_file_path):
-		with open(movie_file_path, "w") as file:
-			index = 0
-			while index < len(movie_refs):
-				movie_ref = movie_refs[index]
-				movie_refs[index] = "{}\t0\t1.0\t{}".format(movie_ref["picture_num"], movie_ref["movie_text"])
-				index = index + 1
-			movie_refs.insert(0, "{:d},1\n".format(len(final_image_refs)))
-			print("Creating: ", "movies.txt")
-			file.writelines(movie_refs)
+		for index, movie_ref in enumerate(movie_refs):
+			movie_refs[index] = "{}\t0\t1.0\t{}".format(movie_ref["picture_num"], movie_ref["movie_text"])
+		movie_refs.insert(0, "{:d},1\n".format(len(final_image_refs)))
+		print("Creating movies.txt")
+		try:
+			with open(movie_file_path, "w") as file:
+				file.writelines(movie_refs)
+		except OSError as e:
+			print("\nError saving:", movie_file_path, ",", e)
 
 	image_process_start = time.time()
 	image_save_time = 0
@@ -789,7 +905,7 @@ def main():
 		# create image folders
 		create_start = False
 		for folder_name, name_root, size in image_folders:
-			dest_path = os.path.join(journal_folder, folder_name)
+			dest_path = os.path.join(destination_folder, folder_name)
 			if not os.path.isdir(dest_path):
 				if not create_start:
 					print("Creating folders", end="", flush=True)
@@ -800,30 +916,34 @@ def main():
 			print()
 		
 		# resize images
-		print("Creating {:d} {}        ".format(image_count, pluralize("image", image_count, True)), end="", flush=True)
+		print("{:<28}".format("Creating {:d} {}".format(image_count, pluralize("image", image_count))), end="", flush=True)
 		print("[{}]{}".format(" "*image_count, "\b"*(image_count+1)), end="", flush=True)
 		
 		futures = []
-				
 		for ref_index in range(len(final_image_refs)):
 			if single_thread:
 				result = save_versions(final_image_refs, ref_index, image_folders, page_headers, page_width)
-				add_keys_to_dict(result[2], final_image_refs[result[3]])
+				final_image_refs[result[3]] |= result[2]
 				image_save_time += result[4]
-				print(".", end="", flush=True)
+				if result[0] < 0:
+					print()
+					print("Image Save Error:", result[1])
+				elif result[0] == 0:
+					print("x", end="", flush=True)
+				else:
+					print(".", end="", flush=True)
 			else:
 				future = executor.submit(save_versions, final_image_refs, ref_index, image_folders, page_headers, page_width)
 				futures.append(future)
 
 		if len(futures)>0:
 			for future in concurrent.futures.as_completed(futures, timeout=None):
-				task_exception = future.exception()
-				if task_exception != None:
+				if future.exception():
 					print()
-					print("Image scaling exception: ", task_exception)
+					print("Image scaling exception: ", future.exception())
 				result = future.result()
 				if result[0] >= 0:
-					add_keys_to_dict(result[2], final_image_refs[result[3]])
+					final_image_refs[result[3]] |= result[2]
 					image_save_time += result[4]
 				if result[0] < 0:
 					print()
@@ -840,13 +960,13 @@ def main():
 	image_process_time = time.time() - image_process_start
 	html_generate_start = time.time()
 	
-	copyright = "©" + str(datetime.today().year) + " RickAndRandy.com"
+	copyright_html = html.escape("©" + str(datetime.today().year) + " RickAndRandy.com")
 
 	# save picture html files
 	page_count = len(pages)
 	detail_count = len(final_image_refs)
 	if detail_count>0:
-		print("Creating {:d} detail {}  ".format(detail_count, pluralize("page", detail_count, True)), end="", flush=True)
+		print("{:<28}".format("Creating {:d} detail {}".format(detail_count, pluralize("page", detail_count))), end="", flush=True)
 
 		with open(os.path.join(script_path, "detail.html"), "r") as file:
 			detail_lines = file.readlines()
@@ -855,10 +975,9 @@ def main():
 
 		print("[{}]{}".format(" "*detail_count, "\b"*(detail_count+1)), end="", flush=True)
 		
-		page_number = 1
-		for image_ref in final_image_refs:
-			detail_name = detail_root + image_ref["picture_num"] + ".html"
-			detail_path = os.path.join(journal_folder, detail_name)
+		for page_number, image_ref in enumerate(final_image_refs, 1):
+			detail_name = detail_url(image_ref["picture_num"])
+			detail_path = os.path.join(destination_folder, detail_name)
 			
 			if "is_movie" in image_ref:
 				new_detail_lines = movie_lines.copy()
@@ -872,23 +991,23 @@ def main():
 			replace_keys(new_detail_lines, "_ImageWidth_", str(image_ref["width@1x"]))
 			replace_keys(new_detail_lines, "_ImageHeight_", str(image_ref["height@1x"]))
 		
-			replace_keys(new_detail_lines, "_IndexPageURL_", index_url(image_ref["index_page_num"], page_count))
+			replace_keys(new_detail_lines, "_IndexPageURL_", index_url(image_ref["index_page_num"], num_indexes=page_count))
 			
 			replace_keys(new_detail_lines, "_PageNumber_", str(page_number))
 			replace_keys(new_detail_lines, "_PreviousPageNumber_", str(page_number-1))
 			replace_keys(new_detail_lines, "_NextPageNumber_", str(page_number+ 1))
 			
-			replace_keys(new_detail_lines, "_CurrentPageURL_", "{}{:d}.html".format(detail_root, page_number))
-			replace_keys(new_detail_lines, "_PreviousPageURL_", "{}{:d}.html".format(detail_root, page_number-1))
-			replace_keys(new_detail_lines, "_NextPageURL_", "{}{:d}.html".format(detail_root, page_number+1))
+			replace_keys(new_detail_lines, "_CurrentPageURL_", detail_url(page_number))
+			replace_keys(new_detail_lines, "_PreviousPageURL_", detail_url(page_number-1))
+			replace_keys(new_detail_lines, "_NextPageURL_", detail_url(page_number+1))
 		
 			replace_keys(new_detail_lines, "_EXIF_", image_ref["exif"])
 		
-			replace_keys(new_detail_lines, "_Copyright_", html.escape(copyright))
+			replace_keys(new_detail_lines, "_Copyright_", copyright_html)
 			
-			if (image_ref == final_image_refs[0]):
+			if page_number == 1:
 				remove_lines_with_key(new_detail_lines, "removeonfirstpage")
-			if (image_ref == final_image_refs[-1]):
+			if page_number == detail_count:
 				remove_lines_with_key(new_detail_lines, "removeonlastpage")
 			
 			remove_tag(new_detail_lines, "rkid")
@@ -910,8 +1029,6 @@ def main():
 			if not did_save:
 				print("x", end="", flush=True)
 		
-			page_number += 1
-			
 		print()
 	
 	page_count = len(pages)
@@ -928,20 +1045,19 @@ def main():
 			
 		nav_index, nav_lines = extract_section(index_lines, "nav", "endnav")
 		photo_index, photo_lines = extract_section(index_lines, "picblock", "endpicblock")
-		title_index, title_line = extract_section(index_lines, "title1item", None)
-		title_index2, title_line2 = extract_section(index_lines, "title2item", None)
-		text_index, text_line = extract_section(index_lines, "journaltext", None)
-		image_index, image_line = extract_section(index_lines, "imageitem", None)
+		title_index, title_line = extract_section(index_lines, "title1item")
+		title_index2, title_line2 = extract_section(index_lines, "title2item")
+		text_index, text_line = extract_section(index_lines, "journaltext")
+		image_index, image_line = extract_section(index_lines, "imageitem")
 		
-		print("Creating {:d} index {}   ".format(page_count, pluralize("page", page_count, True)), end="", flush=True)
+		print("{:<28}".format("Creating {:d} index {}".format(page_count, pluralize("page", page_count)),25), end="", flush=True)
 		print("[{}]{}".format(" "*page_count, "\b"*(page_count+1)), end="", flush=True)
 		
-		page_index = 1
-		for page in pages:
+		for page_index, page in enumerate(pages, 1):
 			new_index_lines = index_lines.copy()
 			
-			next_url = index_url(page_index+1, page_count)
-			prev_url = index_url(page_index-1, page_count)
+			next_url = index_url(page_index+1, num_indexes=page_count)
+			prev_url = index_url(page_index-1, num_indexes=page_count)
 			
 			page_title = journal["Title"]
 			if page_count > 1:
@@ -965,12 +1081,7 @@ def main():
 			else:
 				remove_tag(new_index_lines, "prevnext")
 
-			replace_keys(new_index_lines, "_Copyright_", html.escape(copyright))
-
-			if page_index == 1:
-				index_name = index_root + ".html"
-			else:
-				index_name = "{}{:d}.html".format(index_root, page_index)
+			replace_keys(new_index_lines, "_Copyright_", copyright_html)
 		
 			entries = page["Entries"]
 			new_lines = []
@@ -988,8 +1099,7 @@ def main():
 					new_lines.append(text_line.replace("_Text_", entry["Text"]))
 				elif "Image" in entry:
 					image_filename = entry["Image"]
-					with Image.open(os.path.join(journal_folder, image_filename)) as image:
-						width, height = image.size
+					width, height=size_of_image_file(os.path.join(destination_folder, image_filename))
 					new_image_line = image_line.replace("_ImageURL_", image_filename)
 					dest_width = entry["width"] if "width" in entry else page_width
 					new_image_line = new_image_line.replace("_Width_", str(dest_width))
@@ -1020,7 +1130,7 @@ def main():
 			remove_tag(new_index_lines, "removeonlastpage")
 		
 			did_save = False
-			output_path = os.path.join(journal_folder, index_name)
+			output_path = os.path.join(destination_folder, index_url(page_index, num_indexes=page_count, for_html=False))
 			if overwrite_pages or not os.path.isfile(output_path):
 				try:
 					with open(output_path, "w") as file:
@@ -1043,6 +1153,7 @@ def main():
 	total_time = time.time() - start_time
 	
 	if args.timings:
+		print()
 		print("Timing Summary")
 		format_str = "  {:<18} {:6.3f}s"
 		print(format_str.format("File scanning:", file_scan_time))
@@ -1052,12 +1163,23 @@ def main():
 		# if image_save_time >= 0.0005: print(format_str.format("Image saving:", image_save_time))
 		if html_generate_time >= 0.0005: print(format_str.format("HTML Generation:", html_generate_time))
 		print(format_str.format("Total Time:", total_time))
-	
+
+	if args.no_cache:
+		print()
+		print("***                                                     ***")
+		print("*** WARNING: Image caching is disabled in output files! ***")
+		print("***                                                     ***")
+		print()
+
+	if args.open_result:
+		dest_url = "file://" + os.path.join(destination_folder, index_url(1, 10, False))
+		print("Opening:", dest_url)
+		webbrowser.open(dest_url)
 
 if __name__ == '__main__':
 	if not single_thread:
 		executor = concurrent.futures.ThreadPoolExecutor()
 	
-print("-- Building Journal --")
-main()
-print("-- Journal Building Complete --")
+	print("-- Building Journal --")
+	main()
+	print("-- Journal Building Complete --")
