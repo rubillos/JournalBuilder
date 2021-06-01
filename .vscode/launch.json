@@ -19,10 +19,25 @@
                 // "-t"
 
                 "/Users/randy/Sites/PortlandAve/travel/Test1",
-                // "-c",
-                "-wp",
+                "-c",
+                // "-wp",
+                "-r",
                 // "-s",
+                "-nc",
+                "-o",
                 "-t"
+
+                // "/Users/randy/Sites/PortlandAve/travel/Test4",
+                // "-a",
+                // "JimAndKatie",
+                // "-jt",
+                // "Jim & Katie and Ellie & Jake",
+                // "-c",
+                // "-d",
+                // "-r",
+                // "-nc",
+                // "-o",
+                // "-t"
 
                 // "/Users/randy/Sites/PortlandAve/Local/2021-05-13-JimAndKatie",
                 // "-a",
