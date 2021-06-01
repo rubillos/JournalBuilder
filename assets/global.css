@@ -11,13 +11,9 @@ p { -webkit-margin-before: 0.4em;}
 
 #header { margin: 0 15px; }
 #headerImg img { background-color:#BBB; margin: 0; }
-#headerwidth { width: 805px; height: 1px; display: block; whitespace: pre; }
 #header h1 { font-size: 2.1em; color: #747678; font-weight: lighter; float:left; margin: 0 0 10px; padding: 12px 0 0; text-align: left; white-space: nowrap; }
 
 div.clear { clear: both; }
-
-/* ########## */
-/* ##### GENERAL NAVIGATION STYLES, controls previous & next number menu between pages ##### */
 
 ul#nav { margin: 10px 0 0; font-size: 0.85em; float: left; clear: left; display: inline; list-style: none; background-color: #EEE; padding-left: 15px; padding-right: 15px; }
 ul#nav li { float: left; display: inline; padding: 0 2px; }
