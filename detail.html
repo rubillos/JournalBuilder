@@ -7,15 +7,14 @@
 	<meta name="description" content="RickAndRandy.com" />
 </head>
 <body>
-	<div class="detail" style="width:1024px;">
+	<div class="detail" style="width:100%;">
 		<div class="row">
 			<div id="previous">
-				<a href="_PreviousPageURL_" removeonfirstpage="yes">_PreviousPageNumber_</a>
+				<a href="_PreviousPageURL_" removeonfirst>_PreviousPageNumber_</a>
 			</div>
 			<div id="next">
-				<a href="_NextPageURL_" removeonlastpage="yes">_NextPageNumber_</a>
+				<a href="_NextPageURL_" removeonlast>_NextPageNumber_</a>
 			</div>
-			<div style="clear: both;"></div>
 		</div>
 		<div id="content">
 			<div id="photo">
@@ -24,15 +23,14 @@
 			<div class="row" style="width:1024px;">
 				<div id="current">_PageNumber_.</div>
 				<div id="index"><a href="_IndexPageURL_">Index</a></div>
-				<div style="clear: both;"></div>
 			</div>
-			<div class="clean" id="metadata">
+			<div id="metadata">
 				<strong>_EXIF_</strong>
 			</div>
 		</div>
-		<ul id="footer">
-			<li>_Copyright_</li>
-		</ul>
+		<div id="footer">
+			<p>_Copyright_</p>
+		</div>
 	</div>
 	<script src="../../jquery-min.js"></script>
 	<script src="../../imagepage.js"></script>

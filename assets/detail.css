@@ -5,11 +5,14 @@ a { text-decoration: none;}
 img {border: none;}
 
 div.detail { margin: 0 auto; padding-top:0px; }
-div.row { clear: both; }
+div.row { display: flex; justify-content: space-between; }
+.grow { margin: 10px 0; text-align: center; flex-grow:1; }
+.inset { margin: 0 5px; }
 
 #previous, #current, #next, #index { font-size: 2.2em; }
 #previous, #current { float: left; }
 #next, #index { float: right; }
+/* #current, #index { padding: 0 3px; } */
 
 #previous a, #previous a:active, #previous a:visited { padding-left: 15px; padding-bottom: 0.1em; color: #BBB; background: url("../assets/previous.gif") no-repeat center left; }
 #previous a:hover { color: #444; background: url("../assets/previous_active.gif") no-repeat center left; }
@@ -23,8 +26,8 @@ div.row { clear: both; }
 #photo { margin: 0 0 5px 0; text-align: left; }
 #photo img { background-color: #BBB; }
 
+#metadata { padding: 0 3px; }
+
 strong { font-size: 0.8em; }
-ul#footer { text-align: left; float: left; clear: both; padding: 0; list-style: none; }
-ul#footer li { font-size:.8em; color:#BBB; margin:0; padding: 0; }
-
-
+#footer { text-align: left; padding: 0; list-style: none; }
+#footer p { font-size:.8em; color:#BBB; margin:0; padding: 5px 3px; }

@@ -13,25 +13,25 @@
 </head>
 <body>
 	<div class="detail hidden" id="pagewrap">
-		<div class="row"><table border="0" cellpadding="0" cellspacing="0" width="100%"><tr>
-			<td width=150><div id="previous"><a id="previousRef" href="_PreviousPageURL_">999</a></div></td>
-			<td width=50%><center><a id="4kprompt" href="_CurrentPageURL_?4K">Switch to 4K</a></center></td>
-			<td width=50%><center><a id="hdprompt" href="_CurrentPageURL_?HD">Switch to 1080HD</a></center></td>
-			<td width=150><div id="next"><a id="nextRef" href="_NextPageURL_">999</a></div></td>
-		</tr></table></div>
-		<div id="content"><table startoffset="0"><tr><td>
+		<div class="row inset">
+			<div id="previous"><a id="previousRef" href="_PreviousPageURL_">999</a></div>
+			<div class="grow"><a id="4kprompt" href="_CurrentPageURL_?4K">Switch to 4K</a></div>
+			<div class="grow"><a id="hdprompt" href="_CurrentPageURL_?HD">Switch to 1080HD</a></div>
+			<div id="next"><a id="nextRef" href="_NextPageURL_">999</a></div>
+		</div>
+		<div id="content ">
 			<div id="photo" style="background-color: black;">
-            	<video class="hidden" id="movie1" style="min-height: 540px" src="" controls autoplay width="960" height="540">Your browser does not support this movie. Please use Safari or Chrome.</video>
-            	<video class="hidden" id="movie2" style="min-height: 360px" src="" controls autoplay width="640" height="360">Your browser does not support this movie. Please use Safari or Chrome.</video>
+            	<video class="hidden" id="movie1" style="min-height: 540px" src="" controls autoplay width="960" height="540">Unsupported movie. Please use Safari or Chrome.</video>
+            	<video class="hidden" id="movie2" style="min-height: 360px" src="" controls autoplay width="640" height="360">Unsupported movie. Please use Safari or Chrome.</video>
             </div>
-			<div class="row"><table border="0" cellpadding="0" cellspacing="0" width="100%"><tr>
-				<td><div id="current">999</div></td>
-				<td><div id="index"><a href="index.html">Index</a></div></td>
-			</tr></table></div>
-		</td></tr></table></div>
-		<ul id="footer">
-			<li>_Copyright_</li>
-		</ul>
+		</div>
+		<div class="row inset">
+			<div id="current">999</div>
+			<div id="index"><a href="index.html">Index</a></div>
+		</div>
+		<div id="footer" class="inset">
+			<p>_Copyright_</p>
+		</div>
 	</div>
 	<script src="../../jquery-min.js"></script>
 	<script src="../../moviepage.js"></script>

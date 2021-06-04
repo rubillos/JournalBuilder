@@ -7,17 +7,17 @@
 	<meta name="description" content="RickAndRandy.com" />
 </head>
 <body style="display:none" version="2">
-	<table id="page"><tr><td>
+	<div id="pageouter"><div id="page">
 		<div id="header">
 			<div id="headerImg"><img src="" filename="_HeaderImageURL_" width="_PageWidth_" height="_HeaderHeight_" style="width:_PageWidth_px; height:_HeaderHeight_px;" alt="" /></div>
 			<h1>_SiteHeading_</h1>
 			<ul id="nav" style="width:_NavWidth_px;">
-				<li class="previous" id="nonselection" removeonfirstpage="yes"><a href="_PreviousPageURL_"><em class="previous_text">Previous</em></a></li>
-				<li class="previous" id="nonselection" leaveonfirstpage="yes"></li>
+				<li class="previous" id="nonselection" removeonfirst><a href="_PreviousPageURL_"><em class="previous_text">Previous</em></a></li>
+				<li class="previous" id="nonselection" leaveonfirst></li>
 				<li class="pagnation" id="selection" rkid="off">_PageName_</li>
 				<li class="pagnation" id="nonselection" rkid="on"><a href="_IndexPageURL_">_PageName_</a></li>
-				<li class="next" id="nonselection" removeonlastpage="yes"><a href="_NextPageURL_"><em class="next_text">Next</em></a></li>
-				<li class="next" id="nonselection" leaveonlastpage="yes"></li>
+				<li class="next" id="nonselection" removeonlast><a href="_NextPageURL_"><em class="next_text">Next</em></a></li>
+				<li class="next" id="nonselection" leaveonlast></li>
 			</ul rkid="endnav">
 			<div class="clear"></div>
 		</div>
@@ -30,17 +30,18 @@
 					</div rkid="endimagediv">
 				</div rkid="endpicrow">
 			</div rkid="endpicblock">
-			<div rkid="title1item" class="journaltitle" style="width:_PageWidthExtra_px;"><h3 class="title">_Text_</h3></div>
-			<div rkid="title2item" class="journaltitle" style="width:_PageWidthExtra_px;"><h3 class="title" style="display:table; width:_PageWidth_px;"><p style="display:table-cell; text-align:left;">_Text_</p><p style="display:table-cell; text-align:right;">_Text2_</p></h3></div>
-			<div class="journaltext" style="width:_PageWidth_px;"><p class="copy">_Text_</p></div>
+			<div rkid="title1item" class="journaltitle" style="width:_PageWidth_px;"><h3 class="title">_Text_</h3></div>
+			<div rkid="title2item" class="journaltitle" style="width:_PageWidth_px;"><h3 class="title edges"><span>_Text_</span><span class="grow"></span><span>_Text2_</span></h3></div>
+			<div class="journaltext" style="width:_PageWidth_px;"><p>_Text_</p></div>
 			<div rkid="imageitem" class="journaltext" style="width:_PageWidth_px;"><img src="_ImageURL_" alt="" height="_Height_" width="_Width_"></div>
-			<span rkid="prevnext" class="journaltext" style="display:table; width:_PageWidth_px;">
-				<p class="copy" style="display:table-cell; text-align:left;" removeonfirstpage="yes"><a id="previouspagelink" href="_PreviousPageURL_">Previous Page</a></p>
-				<p class="copy" style="display:table-cell; text-align:right;" removeonlastpage="yes"><a id="nextpagelink" href="_NextPageURL_">Next Page</a></p>
-			</span rkid="prevnext">
+			<div rkid="prevnext" class="journaltext edges" style="width:_PageWidth_px;">
+				<span removeonfirst><a id="previouspagelink" href="_PreviousPageURL_">Previous Page</a></span>
+				<span class="grow"></span>
+				<span removeonlast><a id="nextpagelink" href="_NextPageURL_">Next Page</a></span>
+			</div rkid="endprevnext">
 		</div>
 		<div id="footer"><p>_Copyright_</p></div>
-	</td></tr></table>
+	</div></div>
 	<script src="../../jquery-min.js"></script>
 	<script src="../../indexpage.js"></script>
 </body>
