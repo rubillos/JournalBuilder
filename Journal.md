@@ -6,8 +6,10 @@ from an album in the Photos library spcified with the -a option
 Below is the layout for the journal.txt file
 --------------------------------------------------------------------------------
 [Site]Title                                         ; Site title
-[Value=thumb_size]200                               ; Thumbnail size
-[Value=header_height]300                            ; Page header height
+[Value=thumb_size]190                               ; Thumbnail size
+[Value=header_height]250                            ; Page header height
+[Value=image_size]1024                              ; Large image size
+[Value=tall_aspect]1.15                             ; Tall aspect ratio threshold
 [Previous]previous.html                             ; URL of previous site
 [Next]next.html                                     ; URL of next site
 [Caption=filename.ext]Caption                       ; Define a caption for an image
