@@ -19,11 +19,13 @@
                 // "-t"
 
                 "/Users/randy/Sites/PortlandAve/travel/Test1",
-                "-c",
-                // "-wp",
+                // "-c",
+                "-wp",
+                "-wa",
                 "-r",
-                // "-s",
                 "-nc",
+                // "-dc",
+                // "-ac",
                 "-o",
                 "-t"
 
@@ -34,6 +36,8 @@
                 // "Jim & Katie and Ellie & Jake",
                 // "-c",
                 // "-d",
+                // "-dc",
+                // "-ac",
                 // "-r",
                 // "-nc",
                 // "-o",
