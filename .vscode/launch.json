@@ -19,9 +19,9 @@
                 // "-t"
 
                 "/Users/randy/Sites/PortlandAve/travel/Test1",
-                // "-c",
-                "-wp",
-                "-wa",
+                "-c",
+                // "-wp",
+                // "-wa",
                 "-r",
                 "-nc",
                 // "-dc",

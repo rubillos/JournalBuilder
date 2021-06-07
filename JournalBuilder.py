@@ -90,7 +90,6 @@ header_height = args.header_height
 tall_aspect = args.tall_aspect
 
 page_width = 0
-page_width_extra = 0
 nav_width = 0
 
 page_names = []
@@ -394,19 +393,13 @@ def make_nav_bar(nav_lines, page_index):
 		replace_key(nav_lines, "_PreviousPageURL_", prev_url)
 		remove_lines_with_key(nav_lines, "leaveonfirst")
 	else:
-		if page_index == 1:
-			remove_lines_with_key(nav_lines, "removeonfirst")
-		else:
-			remove_lines_with_key(nav_lines, "leaveonfirst")
+		remove_lines_with_key(nav_lines, "removeonfirst")
 		
 	if next_url:
 		replace_key(nav_lines, "_NextPageURL_", next_url)
 		remove_lines_with_key(nav_lines, "leaveonlast")
 	else:
-		if page_index == page_count:
-			remove_lines_with_key(nav_lines, "removeonlast")
-		else:
-			remove_lines_with_key(nav_lines, "leaveonlast")
+		remove_lines_with_key(nav_lines, "removeonlast")
 
 	remove_tags(nav_lines, "removeonfirst", "leaveonfirst", "removeonlast", "leaveonlast")
 	return nav_lines
@@ -418,19 +411,9 @@ def insert_array_into_array(src, dest, index):
 	return index
 
 def make_photo_block(photo_lines, image_refs):
-	row_index, row_lines = extract_section(photo_lines, "picrow", "endpicrow")
-	image_index, image_lines = extract_section(row_lines, "imagediv", "endimagediv")
-	
-	row_count = 0
-	current_row_lines = row_lines.copy()
-	current_image_index = image_index
+	image_index, image_lines = extract_section(photo_lines, "imagediv", "endimagediv")
+
 	for image_ref in image_refs:
-		if row_count == 4:
-			row_index = insert_array_into_array(current_row_lines, photo_lines, row_index)
-			current_row_lines = row_lines.copy()
-			current_image_index = image_index
-			row_count = 0
-		
 		new_image_lines = image_lines.copy()
 		new_size = scaled_size(image_ref["image_size"], thumb_size)
 		
@@ -458,11 +441,7 @@ def make_photo_block(photo_lines, image_refs):
 		else:
 			remove_lines_with_key(new_image_lines, "_metavalue_")			
 		
-		current_image_index = insert_array_into_array(new_image_lines, current_row_lines, current_image_index)
-		row_count += 1
-		
-	if row_count > 0:
-		insert_array_into_array(current_row_lines, photo_lines, row_index)		
+		image_index = insert_array_into_array(new_image_lines, photo_lines, image_index)
 
 	return photo_lines
 
@@ -593,7 +572,6 @@ def scan_header(journal, date_overrides):
 
 def main():
 	global page_width
-	global page_width_extra
 	global nav_width
 	global image_folders
 
@@ -769,12 +747,14 @@ def main():
 				date = date_from_string(subtag)
 				if date:
 					entry["Date"] = date
-					add_images_before_date(unplaced_image_refs, date, last_entries if last_entries is not None and len(entries) == 0 else entries, index_page_num)
+					use_last = last_entries is not None and len(entries) == 0
+					add_images_before_date(unplaced_image_refs, date, last_entries if use_last else entries, index_page_num-1 if use_last else index_page_num)
 				entries.append(entry)
 			elif tag == "Timestamp":
 				date = date_from_string(subtag)
 				if date:
-					add_images_before_date(unplaced_image_refs, date, last_entries if last_entries is not None and len(entries) == 0 else entries, index_page_num)
+					use_last = last_entries is not None and len(entries) == 0
+					add_images_before_date(unplaced_image_refs, date, last_entries if use_last else entries, index_page_num-1 if use_last else index_page_num)
 			elif tag == "Text":
 				entries.append({ "Text": text})
 			elif tag == "Image":
@@ -891,9 +871,11 @@ def main():
 					(picture_folder_root + "@2x", picture_name_root, base_image_size*2),
 					(picture_folder_root + "@3x", picture_name_root, base_image_size*3) ]
 						
-	page_width = thumb_size * 4 + 45
-	page_width_extra = page_width + 15
-	nav_width = page_width - 30
+	image_columns = 4
+	column_gap = 15
+	page_width = thumb_size * image_columns + column_gap * (image_columns - 1)
+	nav_inset = 15
+	nav_width = page_width - 2 * nav_inset
 
 	# clean existing output files
 	if args.clean:
@@ -1028,7 +1010,7 @@ def main():
 				replace_key(new_detail_lines, "_ImageWidth_", str(image_ref["width@1x"]))
 				replace_key(new_detail_lines, "_ImageHeight_", str(image_ref["height@1x"]))
 			
-				replace_key(new_detail_lines, "_IndexPageURL_", index_url(image_ref["index_page_num"]))
+				replace_key(new_detail_lines, "_IndexPageURL_", index_url(image_ref["index_page_num"], for_html=False))
 				
 				replace_key(new_detail_lines, "_PageNumber_", str(detail_number))
 				replace_key(new_detail_lines, "_PreviousPageNumber_", str(detail_number-1))
@@ -1073,7 +1055,6 @@ def main():
 			index_lines = file.readlines()
 			
 		replace_key(index_lines, "_PageWidth_", str(page_width))
-		replace_key(index_lines, "_PageWidthExtra_", str(page_width_extra))
 		replace_key(index_lines, "_NavWidth_", str(nav_width))
 		replace_key(index_lines, "_ThumbSize_", str(thumb_size))
 		replace_key(index_lines, "_HeaderHeight_", str(header_height))
@@ -1108,13 +1089,13 @@ def main():
 
 				if prev_url:
 					replace_key(new_index_lines, "_PreviousPageURL_", prev_url)
-				elif page_index == 1:
-					remove_lines_with_key(new_index_lines, "removeonfirst")
+				else:
+					remove_lines_with_key(new_index_lines, "_PreviousPageURL_")
 
 				if next_url:
 					replace_key(new_index_lines, "_NextPageURL_", next_url)
-				elif page_index == page_count:
-					remove_lines_with_key(new_index_lines, "removeonlast")
+				else:
+					remove_lines_with_key(new_index_lines, "_NextPageURL_")
 
 			replace_key(new_index_lines, "_Copyright_", copyright_html)
 		

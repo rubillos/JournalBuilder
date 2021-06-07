@@ -6,7 +6,7 @@
 	<link href="assets/global.css" rel="stylesheet" type="text/css" />
 	<meta name="description" content="RickAndRandy.com" />
 </head>
-<body style="display:none" version="2">
+<body style="display:none" version="3">
 	<div id="pageouter"><div id="page">
 		<div id="header">
 			<div id="headerImg"><img src="" filename="_HeaderImageURL_" width="_PageWidth_" height="_HeaderHeight_" style="width:_PageWidth_px; height:_HeaderHeight_px;" alt="" /></div>
@@ -19,29 +19,28 @@
 				<li class="next" id="nonselection" removeonlast><a href="_NextPageURL_"><em class="next_text">Next</em></a></li>
 				<li class="next" id="nonselection" leaveonlast></li>
 			</ul rkid="endnav">
-			<div class="clear"></div>
 		</div>
-		<div id="content" style="width:_PageWidthExtra_px;">
-			<div class="picblock">
-				<div class="picrow" style="width:_PageWidthExtra_px; display:flex;">
-					<div class="imagediv" style="width:_ThumbSize_px;">
+		<div id="content">
+			<div class="picblock" style="grid-template-columns: repeat(4, _ThumbSize_px);">
+				<div class="imagediv" style="width:_ThumbSize_px;">
+					<div class="imagewrapper">
 						<a rkid="imagecell" href="_DetailPageURL_"><img src="" filename="_ThumbURL_" alt="" height="_ThumbHeight_" width="_ThumbWidth_" /></a>
-						<br><p rkid="imageinfo" class="imagelabel">_metavalue_</p>
-					</div rkid="endimagediv">
-				</div rkid="endpicrow">
+					</div>
+					<p rkid="imageinfo" class="imagelabel">_metavalue_</p>
+				</div rkid="endimagediv">
 			</div rkid="endpicblock">
 			<div rkid="title1item" class="journaltitle" style="width:_PageWidth_px;"><h3 class="title">_Text_</h3></div>
 			<div rkid="title2item" class="journaltitle" style="width:_PageWidth_px;"><h3 class="title edges"><span>_Text_</span><span class="grow"></span><span>_Text2_</span></h3></div>
 			<div class="journaltext" style="width:_PageWidth_px;"><p>_Text_</p></div>
 			<div rkid="imageitem" class="journaltext" style="width:_PageWidth_px;"><img src="_ImageURL_" alt="" height="_Height_" width="_Width_"></div>
 			<div rkid="prevnext" class="journaltext edges" style="width:_PageWidth_px;">
-				<span removeonfirst><a id="previouspagelink" href="_PreviousPageURL_">Previous Page</a></span>
+				<span><a id="previouspagelink" href="_PreviousPageURL_">Previous Page</a></span>
 				<span class="grow"></span>
-				<span removeonlast><a id="nextpagelink" href="_NextPageURL_">Next Page</a></span>
+				<span><a id="nextpagelink" href="_NextPageURL_">Next Page</a></span>
 			</div rkid="endprevnext">
 		</div>
 		<div id="footer"><p>_Copyright_</p></div>
-	</div></div>
+	</div>
 	<script src="../../jquery-min.js"></script>
 	<script src="../../indexpage.js"></script>
 </body>
