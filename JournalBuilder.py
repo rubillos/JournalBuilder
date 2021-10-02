@@ -9,6 +9,7 @@
 import sys, os, time, shutil, pathlib
 import argparse
 from datetime import datetime
+from datetime import timedelta
 from PIL import Image
 import pyheif
 import exifread
@@ -44,6 +45,9 @@ group.add_argument("-a", dest="album_name", help="Source album name", type=str, 
 group.add_argument("-d", "--date", dest="date_sort", help="Show images in chronological order (default: album order)", action="store_true")
 group.add_argument("-f", "--favorite", dest="favorites", help="Include only favorite images", action="store_true")
 
+group = parser.add_argument_group("template creation")
+group.add_argument("-mt", "--maketemplate", dest="make_template", help="Template start and end dates: YYYY:MM:DD,YYYY:MM:DD", type=str, default=None)
+
 group = parser.add_argument_group("overwriting")
 group.add_argument("-w", "--overwrite", dest="overwrite", help="Overwrite all existing output files", action="store_true")
 group.add_argument("-wi", "--overimages", dest="overwrite_images", help="Overwrite existing output images", action="store_true")
@@ -66,13 +70,6 @@ if args.documentation:
 		print(file.read(), end="")
 	quit()
 
-if args.folder:
-	destination_folder = args.folder
-	if not os.path.isdir(destination_folder):
-		parser.error("Destination folder not found")
-else:
-	parser.error("Destination folder not specified")
-
 overwrite_images = args.overwrite or args.overwrite_images
 overwrite_headers = args.overwrite or args.overwrite_headerimages
 overwrite_pages = args.overwrite or args.overwrite_pages
@@ -80,6 +77,8 @@ overwrite_movies = args.overwrite or args.overwrite_movies
 overwrite_assets = args.overwrite or args.overwrite_assets
 
 start_time = time.time()
+
+destination_folder = None
 
 previous_external_url = None
 next_external_url = None
@@ -574,6 +573,14 @@ def main():
 	global page_width
 	global nav_width
 	global image_folders
+	global destination_folder
+
+	if args.folder:
+		destination_folder = args.folder
+		if not os.path.isdir(destination_folder):
+			parser.error("Destination folder not found")
+	else:
+		parser.error("Destination folder not specified")
 
 	unplaced_image_refs = []
 
@@ -1183,7 +1190,33 @@ def main():
 if __name__ == '__main__':
 	if not args.single_thread:
 		executor = concurrent.futures.ThreadPoolExecutor()
-	
-	print("-- Building Journal --")
-	main()
-	print("-- Journal Building Complete --")
+
+	if args.make_template:
+		dates = args.make_template.split(",")
+
+		if len(dates) == 2:
+			start_date = date_from_string(dates[0])
+			end_date = date_from_string(dates[1])
+		
+		if start_date and end_date:
+			day_delta = timedelta(hours = 24)
+
+			print("[Site]JournalName")
+			print("[Value=thumb_size]220")
+			print("[Value=header_height]280")
+			print()
+			print("[Page=HeaderImage.ext,offset]PageName")
+			print()
+			print("[Heading]Movies")
+			print("[Movie]XXX.m4v,(540,30H),(1080,30H),(360,30H),(2160,30H)")
+			print()
+			while start_date <= end_date:
+				print(start_date.strftime("[Heading=%Y-%m-%d]%A - %B %-d, %Y	Location"))
+				print()
+				start_date = start_date + day_delta
+		else:
+			parser.error("Template creation requires start date and end date: YYYY:MM:DD,YYYY:MM:DD")
+	else:
+		print("-- Building Journal --")
+		main()
+		print("-- Journal Building Complete --")
