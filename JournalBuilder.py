@@ -10,6 +10,7 @@ import sys, os, time, shutil, pathlib
 import argparse
 from datetime import datetime
 from datetime import timedelta
+from datetime import timezone
 from PIL import Image
 import pyheif
 import exifread
@@ -122,11 +123,11 @@ def open_image_file(file_ref):
 
 	try:
 		if pathlib.Path(path).suffix.lower() in ['.heif', '.heic']:
-			heif_file = pyheif.read(file_ref)
+			heif_file = pyheif.read(path)
 			image = Image.frombytes(heif_file.mode, heif_file.size, heif_file.data, "raw", heif_file.mode, heif_file.stride)
 			is_heif = True
 		else:
-			image = Image.open(file_ref)
+			image = Image.open(path)
 	except:
 		pass
 
@@ -134,12 +135,23 @@ def open_image_file(file_ref):
 
 def size_of_image_file(file_ref, orientation=0):
 	image_size = None
-	image, is_heif = open_image_file(file_ref)
 
-	if image:
-		image_size = image.size
-		if not is_heif and (orientation == 6 or orientation == 8):
-			image_size = (image_size[1], image_size[0])
+	if isinstance(file_ref, str):
+		path = file_ref
+	else:
+		path = file_ref.name
+
+	try:
+		if pathlib.Path(path).suffix.lower() in ['.heif', '.heic']:
+			heif_file = pyheif.read(path)
+			image_size = heif_file.size
+		else:
+			image = Image.open(path)
+			image_size = image.size
+			if orientation == 6 or orientation == 8:
+				image_size = (image_size[1], image_size[0])
+	except:
+		pass
 
 	return image_size
 
@@ -302,6 +314,7 @@ def date_from_string(date_string):
 				date_time = datetime.strptime(date_string, format)
 				if "%H" not in format:
 					date_time = date_time.replace(hour=1, minute=1)
+				date_time = date_time.replace(tzinfo=timezone(timedelta(days=-1, seconds=61200)))
 				return date_time
 			except:
 				pass	
@@ -490,7 +503,7 @@ def rearrange(pages):
 			insert_photos(dest_index-1, src_photo)
 
 	def double_move(src_index, dest_index):
-		src_line_index = src_index/4
+		src_line_index = src_index // 4
 		src_index2 = find_item(True, src_line_index, src_index % 4+1)
 		dest_index2 = find_item(False, src_line_index+1, dest_index % 4+1)
 		dest2 = photos.pop(dest_index2)
@@ -613,7 +626,7 @@ def main():
 				if photo.isphoto and not photo.hidden and (not args.favorites or photo.favorite):
 					photo_path = photo.path_edited if photo.path_edited else photo.path
 					if photo_path:
-						file_paths.append((photo.original_filename, photo_path, photo.title, photo.date))
+						file_paths.append((photo.original_filename, photo_path, photo.title, photo.date, photo.width, photo.height, photo.orientation))
 					else:
 						print("Warning: File missing for", photo.filename)
 		else:
@@ -626,14 +639,15 @@ def main():
 			for file_name in os.listdir(images_folder_path):
 				file_path = os.path.join(images_folder_path, file_name)
 				if not file_name.startswith('.') and os.path.isfile(file_path):
-					file_paths.append((file_name, file_path, None, None))
+					file_paths.append((file_name, file_path, None, None, None, None, None))
 			
 	if len(file_paths) == 0:
 		parser.error("No source photos found! Please specify an album name (-a) or an image folder (-i).")
 
 	photo_list_time = time.time() - photo_list_start
 		
-	for file_name, file_path, title, photo_date in file_paths:
+	print_now("Retrieving photo metadata...")
+	for file_name, file_path, title, photo_date, photo_width, photo_height, photo_orientation in file_paths:
 		with open(file_path, "rb") as image_file:
 			tags = exifread.process_file(image_file, details=False)
 			keys = tags.keys()
@@ -652,19 +666,23 @@ def main():
 
 			image_ref["date"] = photo_date
 			image_ref["date_string"] = photo_date.strftime(date_format)
-			image_ref["orientation"] = tags['Image Orientation'].values[0] if 'Image Orientation' in keys else 0
+
+			if photo_orientation:
+				image_ref["orientation"] = photo_orientation
+			else:
+				image_ref["orientation"] = tags['Image Orientation'].values[0] if 'Image Orientation' in keys else 0
 
 			if args.reorder_thumbs or args.aspect_as_captions:
-				if "EXIF ExifImageWidth" in tags and "EXIF ExifImageLength" in tags:
-					apect_ratio = (float(tags["EXIF ExifImageWidth"].values[0]) / float(tags["EXIF ExifImageLength"].values[0]))
+				if photo_width and photo_height:
+					image_size = (photo_width, photo_height)
 				else:
 					image_size = size_of_image_file(image_file, image_ref["orientation"])
-					if image_size:
-						apect_ratio = float(image_size[0]) / float(image_size[1])
-					else:
-						apect_ratio = 1.0
-				image_ref["aspect"] = apect_ratio
-				image_ref["tall"] = apect_ratio < tall_aspect
+				if image_size:
+					aspect_ratio = float(image_size[0]) / float(image_size[1])
+				else:
+					aspect_ratio = 1.0
+				image_ref["aspect"] = aspect_ratio
+				image_ref["tall"] = aspect_ratio < tall_aspect
 
 			if title:
 				image_ref["caption"] = title
@@ -700,6 +718,7 @@ def main():
 				
 			image_ref["exif"] = " &bull; ".join(exif_data)
 			unplaced_image_refs.append(image_ref)
+	print(" done.")
 
 	file_scan_time = time.time() - file_scan_start
 
@@ -743,7 +762,7 @@ def main():
 					pass
 			
 				if not header_ref:
-					print("Warning: Header image not found:", tag_parts[0])
+					print("Warning: Header image not found for page:", text, "-", tag_parts[0])
 
 			page_headers.append((header_ref, header_offset, index_page_num))
 			page_names.append(text)
@@ -953,7 +972,8 @@ def main():
 		for ref_index, image_ref in enumerate(final_image_refs):
 			if args.single_thread:
 				result, error_msg, new_keys, index = save_versions(image_ref, ref_index)
-				image_ref |= new_keys
+				if new_keys:
+					image_ref |= new_keys
 				if result < 0:
 					print()
 					print("Image Save Error:", error_msg)
@@ -970,7 +990,8 @@ def main():
 					print()
 					print("Image scaling exception: ", future.exception())
 				result, error_msg, new_keys, ref_index = future.result()
-				final_image_refs[ref_index] |= new_keys
+				if new_keys:
+					final_image_refs[ref_index] |= new_keys
 				if result < 0:
 					print()
 					print("Image Save Error:", error_msg)
@@ -1013,7 +1034,8 @@ def main():
 				page_title = journal_title + " - " + (image_ref["caption"] if "caption" in image_ref else image_ref["file_name"])
 				
 				replace_key(new_detail_lines, "_PageTitle_", html.escape(page_title))
-				replace_key(new_detail_lines, "_ImageURL_", image_ref["picture_name"])
+				if "picture_name" in image_ref:
+					replace_key(new_detail_lines, "_ImageURL_", image_ref["picture_name"])
 				replace_key(new_detail_lines, "_ImageWidth_", str(image_ref["width@1x"]))
 				replace_key(new_detail_lines, "_ImageHeight_", str(image_ref["height@1x"]))
 			
