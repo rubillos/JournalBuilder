@@ -11,6 +11,20 @@
             "program": "${file}",
             "console": "integratedTerminal",
             "args": [
+                "/Users/randy/Sites/PortlandAve/travel/2021-06-16-MontanaWyoming",
+
+                "-a",
+                "2021-06-16 Montana Wyoming",
+                "-nc",
+                "-o",
+                "-f",
+                "-r",
+                // "-ac",
+                "-w",
+                "-c"
+
+                // "-s"
+
                 // "/Users/randy/Sites/PortlandAve/Local/2021-05-27-RussAndJustin",
                 // "-a",
                 // "2021-05-27 Russ & Justin",
@@ -18,16 +32,16 @@
                 // "-c",
                 // "-t"
 
-                "/Users/randy/Sites/PortlandAve/travel/Test1",
-                "-c",
+                // "/Users/randy/Sites/PortlandAve/travel/Test1",
+                // "-c",
                 // "-wp",
                 // "-wa",
-                "-r",
-                "-nc",
+                // "-r",
+                // "-nc",
                 // "-dc",
                 // "-ac",
-                "-o",
-                "-t"
+                // "-o",
+                // "-t"
 
                 // "/Users/randy/Sites/PortlandAve/travel/Test4",
                 // "-a",
