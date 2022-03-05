@@ -1,21 +1,24 @@
-#!python
+#!python3
 
 # pip install --upgrade pip
 # pip install cryptography
-# pip install git+https://github.com/carsales/pyheif.git
-# pip install pyheif-pillow-opener
+# pip install pyheif
+# pip install pillow_heif
 # pip install exifread
 # pip install Pillow
 # pip install osxphotos
-# pip install webbrowser
 
 import sys, os, time, shutil, pathlib
 import argparse
 from datetime import datetime, timedelta, timezone
 from PIL import Image
-from pyheif_pillow_opener import register_heif_opener
+from pillow_heif import register_heif_opener
 import exifread
 import concurrent.futures
+from rich.console import Console
+from rich.progress import Progress, BarColumn, TimeElapsedColumn
+from rich.theme import Theme
+from rich.panel import Panel
 import html  
 import webbrowser
 
@@ -38,9 +41,9 @@ group.add_argument("-ts", dest="thumb_size", help="Thumbnail size (default: 190)
 group.add_argument("-is", dest="image_size", help="Base image size (default: 1024)", type=int, default=1024)
 group.add_argument("-hh", dest="header_height", help="Header height (default: 250)", type=int, default=250)
 group.add_argument("-ta", dest="tall_aspect", help="Tall aspect ratio threshold (default: 1.15)", type=float, default=1.15)
+group.add_argument("-y", dest="year", help="copyright year (default: current year)", default=datetime.today().year)
 group.add_argument("-r", "--reorder", dest="reorder_thumbs", help="Re-order thumbs to minimize page height", action="store_true")
 group.add_argument("-q", dest="jpeg_quality", help="JPEG quality level (default: high)", type=str, choices=["low", "medium", "high", "very_high", "maximum"], default="high")
-
 group = parser.add_argument_group("album settings")
 group.add_argument("-db", dest="data_base", help="Path to Photos library (default: system library)", type=str, default=None)
 group.add_argument("-a", dest="album_name", help="Source album name", type=str, default=None)
@@ -67,9 +70,34 @@ args = parser.parse_args()
 
 script_path = os.path.abspath(os.path.dirname(sys.argv[0]))
 
+theme = Theme({
+			"progress.percentage": "white",
+			"progress.remaining": "green",
+			"progress.elapsed": "green",
+			"bar.complete": "green",
+			"bar.finished": "green",
+			"bar.pulse": "green",
+			"repr.ellipsis": "white",
+			"repr.number": "white",
+			"repr.path": "white",
+			"repr.filename": "white"
+			# "progress.data.speed": "white",
+			# "progress.description": "none",
+			# "progress.download": "white",
+			# "progress.filesize": "white",
+			# "progress.filesize.total": "white",
+			# "progress.spinner": "white",
+			})
+
+console = Console(theme=theme)
+
+error_color = "[bold red]"
+error_item_color = "[bright_magenta]"
+error_message_color = "[magenta]"
+
 if args.documentation:
 	with open(os.path.join(script_path, "journal.md"), "r") as file:
-		print(file.read(), end="")
+		console.print(file.read(), end="")
 	quit()
 
 overwrite_images = args.overwrite or args.overwrite_images
@@ -113,7 +141,7 @@ date_formats = [date_format, "%Y:%m:%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d", 
 register_heif_opener()
 
 def print_now(str):
-	print(str, end="", flush=True)
+	console.print(str, end="")
 
 def open_image_file(file_ref):
 	image = None
@@ -126,13 +154,7 @@ def open_image_file(file_ref):
 		file_obj = file_ref
 		path = file_ref.name
 
-	# if isinstance(file_ref, str):
-	# 	path = file_ref
-	# else:
-	# 	path = file_ref.name
-
 	try:
-		# image = Image.open(path)
 		image = Image.open(file_obj)
 		is_heif = pathlib.Path(path).suffix.lower() in ['.heif', '.heic']
 	except:
@@ -183,7 +205,6 @@ def save_versions(image_ref, ref_index, version_data, header_info):
 		scaled_image = image.resize(size, resample=Image.LANCZOS)
 		scaled_time = time.time()
 		save_image(scaled_image, path)
-		# scaled_image.save(path, "JPEG", quality=args.jpeg_quality)
 		saved_time = time.time()
 		return (scaled_image, saved_time-scaled_time, scaled_time-start_time)
 
@@ -194,7 +215,6 @@ def save_versions(image_ref, ref_index, version_data, header_info):
 		cropped_image = image.resize(size, box=(0, src_top, image.size[0], src_top+src_slice_height), resample=Image.LANCZOS)
 		scaled_time = time.time()
 		save_image(cropped_image, path)
-		# cropped_image.save(path, "JPEG", quality=args.jpeg_quality)
 		saved_time = time.time()
 		return (saved_time-scaled_time, scaled_time-start_time)
 
@@ -351,15 +371,15 @@ def get_next_line(src):
 		tag_end = line.find("]", 1)
 		if tag_end > 1:
 			tag_parts = line[1:tag_end].split("=")
-			tag = tag_parts[0]
+			tag = tag_parts[0].lower()
 			subtag = tag_parts[1] if len(tag_parts) > 1 else ""
 			text = line[tag_end+1:]
 	elif len(line)>0:
-		tag = "Text"
+		tag = "text"
 		text = line
 		while text.endswith("<br>") and len(src)>0 and not src[0].startswith("["):
 			text = text + '\n' + src.pop(0).strip()
-		
+	
 	return (tag, subtag, text)
 
 def date_from_string(date_string):
@@ -373,7 +393,7 @@ def date_from_string(date_string):
 				return date_time
 			except:
 				pass	
-		print("Failed to parse date", date_string)
+		console.print(error_color + "Failed to parse date " + error_item_color +  date_string)
 	return None
 
 def extract_section(lines, starttext, endtext=None):
@@ -620,9 +640,9 @@ def scan_header(journal, date_overrides):
 
 	while len(journal) > 0:
 		tag, subtag, text = get_next_line(journal)
-		if tag == "Date":
+		if tag == "date":
 			date_overrides[subtag] = text
-		elif tag == "Value":
+		elif tag == "value":
 			if len(subtag) > 0 and len(text) > 0:
 				if subtag == "thumb_size":
 					thumb_size = int(text)
@@ -632,14 +652,23 @@ def scan_header(journal, date_overrides):
 					base_image_size = int(text)
 				elif subtag == "tall_aspect":
 					tall_aspect = float(text)
-		elif tag == "Previous":
+		elif tag == "previous":
 			previous_external_url = text
-		elif tag == "Next":
+		elif tag == "next":
 			next_external_url = text
-		elif not args.album and tag == "Album":
-			args.album = text
+		elif not args.album_name and tag == "album":
+			args.album_name = text
+			args.favorites = True
+			args.open_result = True
+			args.clean = True
+			args.reorder_thumbs = True
+		elif tag == "year":
+			args.year = int(text)
+		elif tag == "test":
+			args.no_cache = True
 
 def main():
+	global console
 	global page_width
 	global nav_width
 	global image_folders
@@ -678,7 +707,7 @@ def main():
 		print_now("Opening Photos database...")
 		import osxphotos
 		photosdb = osxphotos.PhotosDB(dbfile=args.data_base)
-		print(" done.")
+		console.print(" done.")
 		album_info = next((info for info in photosdb.album_info if info.title == args.album_name), None)
 		if album_info:
 			for photo in album_info.photos:
@@ -687,7 +716,7 @@ def main():
 					if photo_path:
 						file_paths.append((photo.original_filename, photo_path, photo.title, photo.date, photo.width, photo.height, 0 if photo.path_edited else photo.orientation))
 					else:
-						print("Warning: File missing for", photo.filename)
+						console.print(error_color + "Warning: File missing for " + error_item_color + photo.filename)
 		else:
 			parser.error("Photos album not found: " + args.album_name)
 	else:
@@ -721,7 +750,7 @@ def main():
 				photo_date = date_from_string(tags['Image DateTime'].values)
 			if not photo_date:
 				photo_date = datetime.fromtimestamp(os.path.getmtime(file_path))
-				print("Warning: Using os date for", file_name, photo_date)
+				console.print(error_color + "Warning: Using os date for " + error_item_color + file_name + " - " + error_message_color + photo_date)
 
 			image_ref["date"] = photo_date
 			image_ref["date_string"] = photo_date.strftime(date_format)
@@ -746,10 +775,11 @@ def main():
 			if photo_width and photo_height:
 				image_ref["current_size"] = (photo_width, photo_height)
 
-			if title:
+			if not title and 'Image ImageDescription' in keys:
+				title = tags['Image ImageDescription'].values
+
+			if title and (title != "default") and not ("DCIM\\" in title):
 				image_ref["caption"] = title
-			elif 'Image ImageDescription' in keys:
-				image_ref["caption"] = tags['Image ImageDescription'].values
 			
 			exif_data = [file_name, image_ref["date_string"]]
 			
@@ -780,7 +810,7 @@ def main():
 				
 			image_ref["exif"] = " &bull; ".join(exif_data)
 			unplaced_image_refs.append(image_ref)
-	print(" done.")
+	console.print(" done.")
 
 	file_scan_time = time.time() - file_scan_start
 
@@ -802,13 +832,13 @@ def main():
 	while len(journal_src) > 0:
 		tag, subtag, text = get_next_line(journal_src)
 		
-		if tag == "Site":
+		if tag == "site":
 			journal_title = text
-		elif tag == "Page" or tag == "Epilog":
+		elif tag == "page" or tag == "epilog":
 			index_page_num += 1
 			last_entries = entries
 			entries = []
-			if tag == "Epilog":
+			if tag == "epilog":
 				text = "Epilog"
 				add_images_before_date(unplaced_image_refs, None, last_entries if last_entries is not None else entries, index_page_num-1)
 			page = { "Entries": entries }
@@ -824,19 +854,19 @@ def main():
 					pass
 			
 				if not header_ref:
-					print("Warning: Header image not found for page:", text, "-", tag_parts[0])
+					console.print(error_color + "Warning: Header image not found for page: " + error_item_color + text + " - " + tag_parts[0])
 
 			page_headers.append((header_ref, header_offset, index_page_num))
 			page_names.append(text)
 			pages.append(page)
-		elif tag == "Caption":
+		elif tag == "caption":
 			caption_ref = next((image_ref for image_ref in all_image_refs if image_ref["file_name"] == subtag), None)
 			if caption_ref:
 				caption_ref["caption"] = text
 			else:
-				print("Warning: Image for caption not found:", subtag)
+				console.print(error_color + "Warning: Image for caption not found: " + error_item_color + subtag)
 		elif entries is not None:
-			if tag == "Heading":
+			if tag == "heading":
 				entry = { "Heading": text }
 				date = date_from_string(subtag)
 				if date:
@@ -844,21 +874,21 @@ def main():
 					use_last = last_entries is not None and len(entries) == 0
 					add_images_before_date(unplaced_image_refs, date, last_entries if use_last else entries, index_page_num-1 if use_last else index_page_num)
 				entries.append(entry)
-			elif tag == "Timestamp":
+			elif tag == "timestamp":
 				date = date_from_string(subtag)
 				if date:
 					use_last = last_entries is not None and len(entries) == 0
 					add_images_before_date(unplaced_image_refs, date, last_entries if use_last else entries, index_page_num-1 if use_last else index_page_num)
-			elif tag == "Text":
+			elif tag == "text":
 				entries.append({ "Text": text})
-			elif tag == "Image":
+			elif tag == "image":
 				tag_parts = subtag.split(",")
 				if len(tag_parts)>=1:
 					entry = { "Image": tag_parts[0] }
 					if len(tag_parts) >= 2:
 						entry["width"] = int(tag_parts[1])
 					entries.append(entry)
-			elif tag == "Movie":
+			elif tag == "movie":
 				caption, text = extract_up_to(text, ",")
 				movie_base, text = extract_up_to(text, ",")
 				heights = {}
@@ -904,7 +934,7 @@ def main():
 						movie_refs.append(movie_ref)
 						unplaced_image_refs.remove(movie_ref)
 				else:
-					print("Warning: Invalid movie info:", text)
+					console.print(error_color + "Warning: Invalid movie info: " + error_item_color + text)
 	
 	if len(pages) == 0 and args.album_name:
 		index_page_num = 1
@@ -977,22 +1007,21 @@ def main():
 
 	# clean existing output files
 	if args.clean:
-		print_now("Cleaning destination folder")
+		print_now("Cleaning destination folder...")
 		folders_removed = 0
 		files_removed = 0
 		for name in os.listdir(destination_folder):
 			path= os.path.join(destination_folder, name)
 			if name.startswith(thumb_folder_root) or name.startswith(picture_folder_root) or name=="assets":
-				print_now(".")
 				shutil.rmtree(path)
 				folders_removed += 1
 			elif name.startswith(thumb_name_root) or name.startswith(picture_name_root) or name.startswith(header_name_root) or name.startswith(index_root) or name.startswith(detail_root) or name=="movies.txt":
-				print_now(".")
 				os.remove(path)
 				files_removed += 1
-		print("  done.")
 		if files_removed>0 or folders_removed>0:
-			print("  (Removed {:d} {} and {:d} {})".format(folders_removed, pluralize("folder", folders_removed), files_removed, pluralize("file", files_removed)))
+			console.print("  removed {:d} {} and {:d} {}.".format(folders_removed, pluralize("folder", folders_removed), files_removed, pluralize("file", files_removed)))
+		else:
+			console.print("  done.")
 
 	#copy assets folder
 	dest_assets_path = os.path.join(destination_folder, "assets")
@@ -1003,22 +1032,22 @@ def main():
 		src_assets_path = os.path.join(script_path, "assets")
 		try:
 			shutil.copytree(src_assets_path, dest_assets_path)
-			print("  done.")
+			console.print("  done.")
 		except OSError as e:
-			print("\nError copying:", dest_assets_path, ",", e)
+			console.print(error_color + "Error copying: " + error_item_color + dest_assets_path, " , " + error_message_color + e)
 
 	#save movies.txt
 	movie_file_path = os.path.join(destination_folder, "movies.txt")
 	if not os.path.isfile(movie_file_path):
 		for index, movie_ref in enumerate(movie_refs):
-			movie_refs[index] = "{}\t0\t1.0\t{}".format(movie_ref["picture_num"], movie_ref["movie_text"])
+			movie_refs[index] = "{}\t0\t1.0\t{}\n".format(movie_ref["picture_num"], movie_ref["movie_text"])
 		movie_refs.insert(0, "{:d},1\n".format(len(final_image_refs)))
-		print("Creating movies.txt")
+		console.print("Creating movies.txt")
 		try:
 			with open(movie_file_path, "w") as file:
 				file.writelines(movie_refs)
 		except OSError as e:
-			print("\nError saving:", movie_file_path, ",", e)
+			console.print(error_color + "Error saving: " + error_item_color + movie_file_path, " , " + error_message_color + e)
 
 	image_timing = None
 	image_process_start = time.time()
@@ -1036,12 +1065,9 @@ def main():
 				print_now(".")
 				os.mkdir(dest_path)
 		if create_start:
-			print("  done.")
+			console.print("  done.")
 		
 		# resize images
-		print_now("{:<28}".format("Creating {:d} {}".format(image_count, pluralize("image", image_count))))
-		print_now("[{}]{}".format(" "*image_count, "\b"*(image_count+1)))
-
 		version_data = {
 			"page_width" : page_width,
 			"header_height" : header_height,
@@ -1071,126 +1097,111 @@ def main():
 					timing[key] += data[key]
 				new_keys.pop("timing_data")
 
-		futures = []
-		for ref_index, image_ref in enumerate(final_image_refs):
-			compact_ref = { key: image_ref[key] for key in image_keys if key in image_ref }
+		with Progress("[progress.description]{task.description}", BarColumn(), "[progress.percentage]{task.percentage:>3.0f}%", TimeElapsedColumn(), console=console) as progress:
+			task = progress.add_task("Creating {:d} {}".format(image_count, pluralize("image", image_count)), total=image_count, start=True)
 
-			file_name = image_ref["file_name"]
-			header_info = None
-			if len(page_headers) > 0:
-				header_info = next((header for header in page_headers if header[0] and header[0]["file_name"] == file_name), None)
+			futures = []
+			for ref_index, image_ref in enumerate(final_image_refs):
+				compact_ref = { key: image_ref[key] for key in image_keys if key in image_ref }
 
-			if args.single_thread:
-				result, error_msg, new_keys, index = save_versions(compact_ref, ref_index, version_data, header_info)
-				if new_keys:
-					if args.timings:
-						accumulate_timing(new_keys, image_timing)
-					image_ref |= new_keys
-				if result < 0:
-					print()
-					print("Image Save Error:", error_msg)
-				elif result == 0:
-					print_now("x")
+				file_name = image_ref["file_name"]
+				header_info = None
+				if len(page_headers) > 0:
+					header_info = next((header for header in page_headers if header[0] and header[0]["file_name"] == file_name), None)
+
+				if args.single_thread:
+					result, error_msg, new_keys, index = save_versions(compact_ref, ref_index, version_data, header_info)
+					if new_keys:
+						if args.timings:
+							accumulate_timing(new_keys, image_timing)
+						image_ref |= new_keys
+					if result < 0:
+						console.print(error_color + "Image Save Error: " + error_message_color + error_msg)
+					
+					progress.update(task, advance=1)
 				else:
-					print_now(".")
-			else:
-				futures.append(executor.submit(save_versions, compact_ref, ref_index, version_data, header_info))
+					futures.append(executor.submit(save_versions, compact_ref, ref_index, version_data, header_info))
 
-		if len(futures)>0:
-			for future in concurrent.futures.as_completed(futures, timeout=None):
-				if future.exception():
-					print()
-					print("Image scaling exception: ", future.exception())
-				result, error_msg, new_keys, ref_index = future.result()
-				if new_keys:
-					if args.timings:
-						accumulate_timing(new_keys, image_timing)
-					final_image_refs[ref_index] |= new_keys
-				if result < 0:
-					print()
-					print("Image Save Error:", error_msg)
-				elif result == 0:
-					print_now("x")
-				else:
-					print_now(".")
-		else:
-			print_now("x")
-		
-		print()
+			if len(futures)>0:
+				for future in concurrent.futures.as_completed(futures, timeout=None):
+					if future.exception():
+						console.print(error_color + "Image scaling exception: " + error_message_color + future.exception())
+					result, error_msg, new_keys, ref_index = future.result()
+					if new_keys:
+						if args.timings:
+							accumulate_timing(new_keys, image_timing)
+						final_image_refs[ref_index] |= new_keys
+					if result < 0:
+						console.print(error_color + "Image Save Error: " + error_message_color + error_msg)
+					progress.update(task, advance=1)
 
 	image_process_time = time.time() - image_process_start
 	html_generate_start = time.time()
 	
-	copyright_html = html.escape("©" + str(datetime.today().year) + " RickAndRandy.com")
+	copyright_html = html.escape("©" + str(args.year) + " RickAndRandy.com")
 
 	# save detail html files
 	page_count = len(pages)
 	detail_count = len(final_image_refs)
 	if detail_count>0:
-		print_now("{:<28}".format("Creating {:d} detail {}".format(detail_count, pluralize("page", detail_count))))
+		with Progress("[progress.description]{task.description}", BarColumn(), "[progress.percentage]{task.percentage:>3.0f}%", console=console) as progress:
+			task = progress.add_task("Creating {:d} detail {}".format(detail_count, pluralize("page", detail_count)), total=detail_count, start=True)
+			with open(os.path.join(script_path, "detail.html"), "r") as file:
+				detail_lines = file.readlines()
+			with open(os.path.join(script_path, "movie.html"), "r") as file:
+				movie_lines = file.readlines()
 
-		with open(os.path.join(script_path, "detail.html"), "r") as file:
-			detail_lines = file.readlines()
-		with open(os.path.join(script_path, "movie.html"), "r") as file:
-			movie_lines = file.readlines()
-
-		print_now("[{}]{}".format(" "*detail_count, "\b"*(detail_count+1)))
-		
-		for detail_number, image_ref in enumerate(final_image_refs, 1):
-			detail_path = os.path.join(destination_folder, detail_url(image_ref["picture_num"]))
-			did_save = False
-			if overwrite_pages or not os.path.isfile(detail_path):
-				if "is_movie" in image_ref:
-					new_detail_lines = movie_lines.copy()
-				else:
-					new_detail_lines = detail_lines.copy()
-					
-				page_title = journal_title + " - " + (image_ref["caption"] if "caption" in image_ref else image_ref["file_name"])
-				
-				replace_key(new_detail_lines, "_PageTitle_", html.escape(page_title))
-				if "picture_name" in image_ref:
-					replace_key(new_detail_lines, "_ImageURL_", image_ref["picture_name"])
-				replace_key(new_detail_lines, "_ImageWidth_", str(image_ref["width@1x"]))
-				replace_key(new_detail_lines, "_ImageHeight_", str(image_ref["height@1x"]))
+			print_now("[{}]{}".format(" "*detail_count, "\b"*(detail_count+1)))
 			
-				replace_key(new_detail_lines, "_IndexPageURL_", index_url(image_ref["index_page_num"], for_html=False))
-				
-				replace_key(new_detail_lines, "_PageNumber_", str(detail_number))
-				replace_key(new_detail_lines, "_PreviousPageNumber_", str(detail_number-1))
-				replace_key(new_detail_lines, "_NextPageNumber_", str(detail_number+ 1))
-				
-				replace_key(new_detail_lines, "_CurrentPageURL_", detail_url(detail_number))
-				replace_key(new_detail_lines, "_PreviousPageURL_", detail_url(detail_number-1))
-				replace_key(new_detail_lines, "_NextPageURL_", detail_url(detail_number+1))
-			
-				exif_text = image_ref["exif"]
-				if "caption" in image_ref:
-					exif_text += "<br>{}".format(image_ref["caption"])
-				replace_key(new_detail_lines, "_EXIF_", exif_text)
-			
-				replace_key(new_detail_lines, "_Copyright_", copyright_html)
-				
-				if detail_number == 1:
-					remove_lines_with_key(new_detail_lines, "removeonfirst")
-				if detail_number == detail_count:
-					remove_lines_with_key(new_detail_lines, "removeonlast")
-				
-				remove_tags(new_detail_lines, "rkid", "removeonfirst", "removeonlast")
-			
-				try:
-					with open(detail_path, "w") as detail_file:
-						detail_file.writelines(new_detail_lines)
-						print_now(".")
-						did_save = True
+			for detail_number, image_ref in enumerate(final_image_refs, 1):
+				detail_path = os.path.join(destination_folder, detail_url(image_ref["picture_num"]))
+				did_save = False
+				if overwrite_pages or not os.path.isfile(detail_path):
+					if "is_movie" in image_ref:
+						new_detail_lines = movie_lines.copy()
+					else:
+						new_detail_lines = detail_lines.copy()
 						
-				except OSError as e:
-					print()
-					print("\nError saving: ", detail_path, ",", e)
-		
-			if not did_save:
-				print_now("x")
-		
-		print()
+					page_title = journal_title + " - " + (image_ref["caption"] if "caption" in image_ref else image_ref["file_name"])
+					
+					replace_key(new_detail_lines, "_PageTitle_", html.escape(page_title))
+					if "picture_name" in image_ref:
+						replace_key(new_detail_lines, "_ImageURL_", image_ref["picture_name"])
+					replace_key(new_detail_lines, "_ImageWidth_", str(image_ref["width@1x"]))
+					replace_key(new_detail_lines, "_ImageHeight_", str(image_ref["height@1x"]))
+				
+					replace_key(new_detail_lines, "_IndexPageURL_", index_url(image_ref["index_page_num"], for_html=False))
+					
+					replace_key(new_detail_lines, "_PageNumber_", str(detail_number))
+					replace_key(new_detail_lines, "_PreviousPageNumber_", str(detail_number-1))
+					replace_key(new_detail_lines, "_NextPageNumber_", str(detail_number+ 1))
+					
+					replace_key(new_detail_lines, "_CurrentPageURL_", detail_url(detail_number))
+					replace_key(new_detail_lines, "_PreviousPageURL_", detail_url(detail_number-1))
+					replace_key(new_detail_lines, "_NextPageURL_", detail_url(detail_number+1))
+				
+					exif_text = image_ref["exif"]
+					if "caption" in image_ref:
+						exif_text += "<br>{}".format(image_ref["caption"])
+					replace_key(new_detail_lines, "_EXIF_", exif_text)
+				
+					replace_key(new_detail_lines, "_Copyright_", copyright_html)
+					
+					if detail_number == 1:
+						remove_lines_with_key(new_detail_lines, "removeonfirst")
+					if detail_number == detail_count:
+						remove_lines_with_key(new_detail_lines, "removeonlast")
+					
+					remove_tags(new_detail_lines, "rkid", "removeonfirst", "removeonlast")
+				
+					try:
+						with open(detail_path, "w") as detail_file:
+							detail_file.writelines(new_detail_lines)
+							progress.update(task, advance=1)
+							did_save = True
+							
+					except OSError as e:
+						console.print(error_color + "Error saving: " + error_item_color + detail_path, " , " + error_message_color + e)
 	
 	# write the index html pages
 	if page_count>0:
@@ -1209,105 +1220,99 @@ def main():
 		text_index, text_line = extract_section(index_lines, "journaltext")
 		image_index, image_line = extract_section(index_lines, "imageitem")
 		
-		print_now("{:<28}".format("Creating {:d} index {}".format(page_count, pluralize("page", page_count))))
-		print_now("[{}]{}".format(" "*page_count, "\b"*(page_count+1)))
-		
-		for page_index, page in enumerate(pages, 1):
-			new_index_lines = index_lines.copy()
-			
-			page_title = journal_title
-			if page_count > 1:
-				page_title = page_title + " - " + page_names[page_index-1]
-			
-			replace_key(new_index_lines, "_PageTitle_", html.escape(page_title))
-			replace_key(new_index_lines, "_SiteHeading_", html.escape(journal_title))
-			
-			if page_count == 1:
-				extract_section(index_lines, "prevnext", "endprevnext")
-			else:
-				remove_tags(new_index_lines, "prevnext", "endprevnext")
+		with Progress("[progress.description]{task.description}", BarColumn(), "[progress.percentage]{task.percentage:>3.0f}%", console=console) as progress:
+			task = progress.add_task("Creating {:d} index {}".format(page_count, pluralize("page", page_count)), total=page_count)
 
-				next_url = index_url(page_index+1)
-				prev_url = index_url(page_index-1)
-
-				if prev_url:
-					replace_key(new_index_lines, "_PreviousPageURL_", prev_url)
-				else:
-					remove_lines_with_key(new_index_lines, "_PreviousPageURL_")
-
-				if next_url:
-					replace_key(new_index_lines, "_NextPageURL_", next_url)
-				else:
-					remove_lines_with_key(new_index_lines, "_NextPageURL_")
-
-			replace_key(new_index_lines, "_Copyright_", copyright_html)
-		
-			new_lines = []		
-			for entry in page["Entries"]:
-				if "Heading" in entry:
-					heading_parts = entry["Heading"].split("\t")
-					if len(heading_parts)>0:
-						new_title_line = title_line if len(heading_parts)==1 else title_line2
-						new_title_line = new_title_line.replace("_Text_", heading_parts[0])
-						if len(heading_parts)>1:
-							new_title_line = new_title_line.replace("_Text2_", heading_parts[1])
-						new_lines.append(new_title_line)
-				elif "Text" in entry:
-					new_lines.append(text_line.replace("_Text_", entry["Text"]))
-				elif "Image" in entry:
-					image_filename = entry["Image"]
-					width, height=size_of_image_file(os.path.join(destination_folder, image_filename))
-					new_image_line = image_line.replace("_ImageURL_", image_filename)
-					dest_width = entry["width"] if "width" in entry else page_width
-					new_image_line = new_image_line.replace("_Width_", str(dest_width))
-					new_image_line = new_image_line.replace("_Height_", str(dest_width * height // width))
-					new_lines.append(new_image_line)
-				elif "Photos" in entry:
-					new_lines.extend(make_photo_block(photo_lines.copy(), entry["Photos"]))
-					
-			insert_array_into_array(new_lines, new_index_lines, text_index)
+			for page_index, page in enumerate(pages, 1):
+				new_index_lines = index_lines.copy()
 				
-			if page_count > 1:
-				insert_array_into_array(make_nav_bar(nav_lines.copy(), page_index), new_index_lines, nav_index)
-		
-			if page_headers[page_index-1][0]:
-				replace_key(new_index_lines, "_HeaderImageURL_", header_image_url(page_index))
-			else:
-				remove_lines_with_key(new_index_lines, "_HeaderImageURL_")
-		
-			remove_tags(new_index_lines, "rkid", "removeonfirst", "removeonlast")
-		
-			did_save = False
-			output_path = os.path.join(destination_folder, index_url(page_index, for_html=False))
-			if overwrite_pages or not os.path.isfile(output_path):
-				try:
-					with open(output_path, "w") as file:
-						file.writelines(new_index_lines)
-						print_now(".")
-						did_save = True
-		
-				except OSError as e:
-					print()
-					print("\nError saving: ", output_path, ",", e)
-					
-			if not did_save:
-				print_now("x")
+				page_title = journal_title
+				if page_count > 1:
+					page_title = page_title + " - " + page_names[page_index-1]
 				
-			page_index += 1
-		
-		print()
+				replace_key(new_index_lines, "_PageTitle_", html.escape(page_title))
+				replace_key(new_index_lines, "_SiteHeading_", html.escape(journal_title))
+				
+				if page_count == 1:
+					extract_section(new_index_lines, "prevnext", "endprevnext")
+				else:
+					remove_tags(new_index_lines, "prevnext", "endprevnext")
+
+					next_url = index_url(page_index+1)
+					prev_url = index_url(page_index-1)
+
+					if prev_url:
+						replace_key(new_index_lines, "_PreviousPageURL_", prev_url)
+					else:
+						remove_lines_with_key(new_index_lines, "_PreviousPageURL_")
+
+					if next_url:
+						replace_key(new_index_lines, "_NextPageURL_", next_url)
+					else:
+						remove_lines_with_key(new_index_lines, "_NextPageURL_")
+
+				replace_key(new_index_lines, "_Copyright_", copyright_html)
+			
+				new_lines = []		
+				for entry in page["Entries"]:
+					if "Heading" in entry:
+						heading_parts = entry["Heading"].split("\t")
+						if len(heading_parts)>0:
+							new_title_line = title_line if len(heading_parts)==1 else title_line2
+							new_title_line = new_title_line.replace("_Text_", heading_parts[0])
+							if len(heading_parts)>1:
+								new_title_line = new_title_line.replace("_Text2_", heading_parts[1])
+							new_lines.append(new_title_line)
+					elif "Text" in entry:
+						new_lines.append(text_line.replace("_Text_", entry["Text"]))
+					elif "Image" in entry:
+						image_filename = entry["Image"]
+						width, height=size_of_image_file(os.path.join(destination_folder, image_filename))
+						new_image_line = image_line.replace("_ImageURL_", image_filename)
+						dest_width = entry["width"] if "width" in entry else page_width
+						new_image_line = new_image_line.replace("_Width_", str(dest_width))
+						new_image_line = new_image_line.replace("_Height_", str(dest_width * height // width))
+						new_lines.append(new_image_line)
+					elif "Photos" in entry:
+						new_lines.extend(make_photo_block(photo_lines.copy(), entry["Photos"]))
+						
+				insert_array_into_array(new_lines, new_index_lines, text_index)
+					
+				if page_count > 1:
+					insert_array_into_array(make_nav_bar(nav_lines.copy(), page_index), new_index_lines, nav_index)
+			
+				if page_headers[page_index-1][0]:
+					replace_key(new_index_lines, "_HeaderImageURL_", header_image_url(page_index))
+				else:
+					remove_lines_with_key(new_index_lines, "_HeaderImageURL_")
+			
+				remove_tags(new_index_lines, "rkid", "removeonfirst", "removeonlast")
+			
+				did_save = False
+				output_path = os.path.join(destination_folder, index_url(page_index, for_html=False))
+				if overwrite_pages or not os.path.isfile(output_path):
+					try:
+						with open(output_path, "w") as file:
+							file.writelines(new_index_lines)
+							progress.update(task, advance=1)
+							did_save = True
+			
+					except OSError as e:
+						console.print(error_color + "Error saving: " + error_item_color + output_path, " , " + error_message_color + e)
+					
+				page_index += 1
 	
 	html_generate_time = time.time() - html_generate_start
 	total_time = time.time() - start_time
 	
 	if args.timings:
-		print()
-		print("Timing Summary")
+		console.print()
+		console.print("Timing Summary")
 		format_str = "  {:<18} {:6.3f}s"
-		print(format_str.format("File scanning:", file_scan_time))
-		if photo_list_time >= 0.0005: print(format_str.format("Enumerate files:", photo_list_time))	
-		if journal_scan_time >= 0.0005: print(format_str.format("Journal scanning: ", journal_scan_time))
-		if image_process_time >= 0.0005: print(format_str.format("Image Processing:", image_process_time))
+		console.print(format_str.format("File scanning:", file_scan_time))
+		if photo_list_time >= 0.0005: console.print(format_str.format("Enumerate files:", photo_list_time))	
+		if journal_scan_time >= 0.0005: console.print(format_str.format("Journal scanning: ", journal_scan_time))
+		if image_process_time >= 0.0005: console.print(format_str.format("Image Processing:", image_process_time))
 		if image_timing:
 			display_names = { 
 				"load_time" : "  Image load time:",
@@ -1320,26 +1325,21 @@ def main():
 			for key in image_timing.keys():
 				cur_time = image_timing[key]
 				if cur_time >= 0.0005:
-					print(format_str.format(display_names[key], cur_time))
-		if html_generate_time >= 0.0005: print(format_str.format("HTML Generation:", html_generate_time))
-		print(format_str.format("Total Time:", total_time))
+					console.print(format_str.format(display_names[key], cur_time))
+		if html_generate_time >= 0.0005: console.print(format_str.format("HTML Generation:", html_generate_time))
+		console.print(format_str.format("Total Time:", total_time))
 
 	if args.no_cache:
-		print()
-		print("***                                                     ***")
-		print("*** WARNING: Image caching is disabled in output files! ***")
-		print("***                                                     ***")
-		print()
+		console.print(Panel.fit("[dark_orange]WARNING: Image caching is disabled in output files!"))
 
 	if args.open_result:
 		dest_url = "file://" + os.path.join(destination_folder, index_url(1, for_html=False))
-		print("Opening:", dest_url)
 		webbrowser.open(dest_url)
 
 if __name__ == '__main__':
 	if not args.single_thread:
-		# executor = concurrent.futures.ThreadPoolExecutor()
-		executor = concurrent.futures.ProcessPoolExecutor()
+		executor = concurrent.futures.ThreadPoolExecutor()
+		# executor = concurrent.futures.ProcessPoolExecutor()
 
 	if args.make_template:
 		start_date = None
@@ -1354,21 +1354,24 @@ if __name__ == '__main__':
 			day_delta = timedelta(hours = 24)
 
 			print("[Site]JournalName")
+			print("[Album]AlbumName")
+			print("[Year]"+args.year)
 			print("[Value=thumb_size]220")
 			print("[Value=header_height]280")
 			print()
 			print("[Page=HeaderImage.ext,offset]PageName")
 			print()
 			print("[Heading]Movies")
-			print("[Movie]XXX.m4v,(540,30H),(1080,30H),(360,30H),(2160,30H)")
+			print("[Movie=ThumbImage.ext]Caption,XXX.m4v,(540,30H),(1080,30H),(360,30H),(2160,30H)")
 			print()
 			while start_date <= end_date:
 				print(start_date.strftime("[Heading=%Y-%m-%d]%A - %B %-d, %Y	Location"))
 				print()
 				start_date = start_date + day_delta
+			print()
+			print("[Epilog=HeaderImage.ext,offset]")
 		else:
 			parser.error("Template creation requires start date and end date: YYYY-MM-DD,YYYY-MM-DD")
 	else:
-		print("-- Building Journal --")
+		console.print(Panel("[green]Begin JournalBuilder"))
 		main()
-		print("-- Journal Building Complete --")
