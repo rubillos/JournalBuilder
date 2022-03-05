@@ -1338,8 +1338,8 @@ def main():
 
 if __name__ == '__main__':
 	if not args.single_thread:
-		executor = concurrent.futures.ThreadPoolExecutor()
-		# executor = concurrent.futures.ProcessPoolExecutor()
+		# executor = concurrent.futures.ThreadPoolExecutor()
+		executor = concurrent.futures.ProcessPoolExecutor()
 
 	if args.make_template:
 		start_date = None
