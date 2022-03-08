@@ -16,7 +16,9 @@ from pillow_heif import register_heif_opener
 import exifread
 import concurrent.futures
 from rich.console import Console
-from rich.progress import Progress, BarColumn, TimeElapsedColumn
+from rich.progress import Progress, BarColumn, TimeElapsedColumn, Task
+from rich.text import Text
+from rich.padding import Padding
 from rich.theme import Theme
 from rich.panel import Panel
 import html  
@@ -73,7 +75,7 @@ script_path = os.path.abspath(os.path.dirname(sys.argv[0]))
 theme = Theme({
 			"progress.percentage": "white",
 			"progress.remaining": "green",
-			"progress.elapsed": "green",
+			"progress.elapsed": "cyan",
 			"bar.complete": "green",
 			"bar.finished": "green",
 			"bar.pulse": "green",
@@ -90,10 +92,6 @@ theme = Theme({
 			})
 
 console = Console(theme=theme)
-
-error_color = "[bold red]"
-error_item_color = "[bright_magenta]"
-error_message_color = "[magenta]"
 
 if args.documentation:
 	with open(os.path.join(script_path, "journal.md"), "r") as file:
@@ -143,12 +141,33 @@ register_heif_opener()
 def print_now(str):
 	console.print(str, end="")
 
+def print_error(*args):
+	message = args[0] if len(args) >= 1 else None
+	item = args[1] if len(args) >= 2 else None
+	error_message = args[2] if len(args) >= 3 else None
+
+	error_color = "[bold red]"
+	error_item_color = "[bright_magenta]"
+	error_message_color = "[magenta]"
+
+	parts = []
+	if message:
+		parts.extend([error_color, message])
+	if item:
+		parts.extend([error_item_color, item])
+	if error_message:
+		if len(parts)>0:
+			parts.extend([error_color, " - "]) 
+		parts.extend([error_message_color, error_message]) 
+
+	console.print("".join(parts))
+
 def open_image_file(file_ref):
 	image = None
 	is_heif = False
 
 	if isinstance(file_ref, str):
-		file_obj = open(file_ref, "rb", buffering=100000000)
+		file_obj = open(file_ref, "rb")
 		path = file_ref
 	else:
 		file_obj = file_ref
@@ -197,7 +216,7 @@ def scaled_size(input_size, max_size):
 	
 def save_versions(image_ref, ref_index, version_data, header_info):
 	def save_image(image, path):
-		with open(path, "wb", buffering=10000000) as file:
+		with open(path, "wb") as file:
 			image.save(file, "JPEG", quality=args.jpeg_quality)
 
 	def save_scaled(image, size, path):
@@ -274,7 +293,7 @@ def save_versions(image_ref, ref_index, version_data, header_info):
 				try:
 					if large_images[index]:
 						source_image = large_images[index]
-					else :
+					else:
 						if not is_loaded:
 							if do_timing:
 								start_time = time.time()
@@ -298,18 +317,22 @@ def save_versions(image_ref, ref_index, version_data, header_info):
 
 			if result >= 0 and header_info:
 				header_size = (version_data["page_width"], version_data["header_height"])
-				for scale, suffix in [ (1, ""), (2, "@2x"), (3, "@3x")]:
+				for scale, suffix, index in [ (1, "", 0), (2, "@2x", 1), (3, "@3x", 2)]:
 					output_path = os.path.join(version_data["destination_folder"], header_image_url(header_info[2], suffix=suffix, for_html=False))
 					if version_data["overwrite_headers"] or not os.path.isfile(output_path):
 						try:
-							if not is_loaded:
-								if do_timing:
-									start_time = time.time()
-								image = load_image(image, orientation)
-								if do_timing:
-									timing_data["load_time"] = time.time() - start_time
-								is_loaded = True
-							scale_time, save_time = save_scaled_header(image, (header_size[0] * scale, header_size[1] * scale), header_info[1], output_path)
+							if large_images[index]:
+								source_image = large_images[index]
+							else:
+								if not is_loaded:
+									if do_timing:
+										start_time = time.time()
+									image = load_image(image, orientation)
+									if do_timing:
+										timing_data["load_time"] = time.time() - start_time
+									is_loaded = True
+								source_image = image
+							scale_time, save_time = save_scaled_header(source_image, (header_size[0] * scale, header_size[1] * scale), header_info[1], output_path)
 							if do_timing:
 								if not "header_save_time" in timing_data:
 									timing_data["header_save_time"] = 0
@@ -393,7 +416,7 @@ def date_from_string(date_string):
 				return date_time
 			except:
 				pass	
-		console.print(error_color + "Failed to parse date " + error_item_color +  date_string)
+		print_error("Failed to parse date ", date_string)
 	return None
 
 def extract_section(lines, starttext, endtext=None):
@@ -640,32 +663,34 @@ def scan_header(journal, date_overrides):
 
 	while len(journal) > 0:
 		tag, subtag, text = get_next_line(journal)
-		if tag == "date":
-			date_overrides[subtag] = text
-		elif tag == "value":
-			if len(subtag) > 0 and len(text) > 0:
-				if subtag == "thumb_size":
-					thumb_size = int(text)
-				elif subtag == "header_height":
-					header_height = int(text)
-				elif subtag == "image_size":
-					base_image_size = int(text)
-				elif subtag == "tall_aspect":
-					tall_aspect = float(text)
-		elif tag == "previous":
-			previous_external_url = text
-		elif tag == "next":
-			next_external_url = text
-		elif not args.album_name and tag == "album":
-			args.album_name = text
-			args.favorites = True
-			args.open_result = True
-			args.clean = True
-			args.reorder_thumbs = True
-		elif tag == "year":
-			args.year = int(text)
-		elif tag == "test":
-			args.no_cache = True
+		match tag:
+			case("date"):
+				date_overrides[subtag] = text
+			case("value"):
+				if len(subtag) > 0 and len(text) > 0:
+					match subtag:
+						case("thumb_size"):
+							thumb_size = int(text)
+						case("header_height"):
+							header_height = int(text)
+						case("image_size"):
+							base_image_size = int(text)
+						case("tall_aspect"):
+							tall_aspect = float(text)
+			case("previous"):
+				previous_external_url = text
+			case("next"):
+				next_external_url = text
+			case ("album") if not args.album_name:
+				args.album_name = text
+				args.favorites = True
+				args.open_result = True
+				args.clean = True
+				args.reorder_thumbs = True
+			case("year"):
+				args.year = int(text)
+			case("test"):
+				args.no_cache = True
 
 def main():
 	global console
@@ -700,7 +725,7 @@ def main():
 	scan_header(journal_src.copy(), date_overrides)
 	
 	# read the file list, get the file info
-	file_scan_start = photo_list_start = time.time()
+	photo_list_start = time.time()
 	file_paths = []
 
 	if args.album_name:
@@ -716,7 +741,7 @@ def main():
 					if photo_path:
 						file_paths.append((photo.original_filename, photo_path, photo.title, photo.date, photo.width, photo.height, 0 if photo.path_edited else photo.orientation))
 					else:
-						console.print(error_color + "Warning: File missing for " + error_item_color + photo.filename)
+						print_error("Warning: File missing for ", photo.filename)
 		else:
 			parser.error("Photos album not found: " + args.album_name)
 	else:
@@ -732,7 +757,8 @@ def main():
 	if len(file_paths) == 0:
 		parser.error("No source photos found! Please specify an album name (-a) or an image folder (-i).")
 
-	photo_list_time = time.time() - photo_list_start
+	file_scan_start = time.time()
+	photo_list_time = file_scan_start - photo_list_start
 		
 	print_now("Retrieving photo metadata...")
 	for file_name, file_path, title, photo_date, photo_width, photo_height, photo_orientation in file_paths:
@@ -750,7 +776,7 @@ def main():
 				photo_date = date_from_string(tags['Image DateTime'].values)
 			if not photo_date:
 				photo_date = datetime.fromtimestamp(os.path.getmtime(file_path))
-				console.print(error_color + "Warning: Using os date for " + error_item_color + file_name + " - " + error_message_color + photo_date)
+				print_error("Warning: Using os date for ", file_name, photo_date)
 
 			image_ref["date"] = photo_date
 			image_ref["date_string"] = photo_date.strftime(date_format)
@@ -854,7 +880,7 @@ def main():
 					pass
 			
 				if not header_ref:
-					console.print(error_color + "Warning: Header image not found for page: " + error_item_color + text + " - " + tag_parts[0])
+					print_error("Warning: Header image not found for page: ", text + " - " + tag_parts[0])
 
 			page_headers.append((header_ref, header_offset, index_page_num))
 			page_names.append(text)
@@ -864,7 +890,7 @@ def main():
 			if caption_ref:
 				caption_ref["caption"] = text
 			else:
-				console.print(error_color + "Warning: Image for caption not found: " + error_item_color + subtag)
+				print_error("Warning: Image for caption not found: ", subtag)
 		elif entries is not None:
 			if tag == "heading":
 				entry = { "Heading": text }
@@ -934,7 +960,7 @@ def main():
 						movie_refs.append(movie_ref)
 						unplaced_image_refs.remove(movie_ref)
 				else:
-					console.print(error_color + "Warning: Invalid movie info: " + error_item_color + text)
+					print_error("Warning: Invalid movie info: ", text)
 	
 	if len(pages) == 0 and args.album_name:
 		index_page_num = 1
@@ -1028,13 +1054,12 @@ def main():
 	if overwrite_assets and os.path.isdir(dest_assets_path):
 		shutil.rmtree(dest_assets_path)
 	if not os.path.isdir(dest_assets_path):
-		print_now("Copying assets folder...")
+		console.print("Copying assets folder...")
 		src_assets_path = os.path.join(script_path, "assets")
 		try:
 			shutil.copytree(src_assets_path, dest_assets_path)
-			console.print("  done.")
 		except OSError as e:
-			console.print(error_color + "Error copying: " + error_item_color + dest_assets_path, " , " + error_message_color + e)
+			print_error("Error copying: ", dest_assets_path, e)
 
 	#save movies.txt
 	movie_file_path = os.path.join(destination_folder, "movies.txt")
@@ -1047,10 +1072,10 @@ def main():
 			with open(movie_file_path, "w") as file:
 				file.writelines(movie_refs)
 		except OSError as e:
-			console.print(error_color + "Error saving: " + error_item_color + movie_file_path, " , " + error_message_color + e)
+			print_error("Error saving: ", movie_file_path, e)
 
 	image_timing = None
-	image_process_start = time.time()
+	image_rate = 0
 
 	image_count = len(final_image_refs)
 	if image_count>0:
@@ -1097,10 +1122,30 @@ def main():
 					timing[key] += data[key]
 				new_keys.pop("timing_data")
 
-		with Progress("[progress.description]{task.description}", BarColumn(), "[progress.percentage]{task.percentage:>3.0f}%", TimeElapsedColumn(), console=console) as progress:
-			task = progress.add_task("Creating {:d} {}".format(image_count, pluralize("image", image_count)), total=image_count, start=True)
+		prog_description = "[progress.description]{task.description}"
+		prog_percentage = "[progress.percentage]{task.percentage:>3.0f}% "
+		prog_rate = "[{task.fields[color]}] ({task.fields[ips]:>5.1f} images per second)"
 
+		class StyledElapsedColumn(TimeElapsedColumn):
+			def render(self, task: "Task") -> Text:
+				elapsed = task.finished_time if task.finished else task.elapsed
+				if elapsed is None:
+					return Text("-h--m--s", style="progress.elapsed")
+				delta = timedelta(seconds=int(elapsed))
+				delta_str = str(delta).replace(":","h-",1).replace(":","m-",1)+"s"
+				new_text = Text(delta_str, style="bright_cyan")
+				new_text.stylize("cyan", 1, 2)
+				new_text.stylize("cyan", 5, 6)
+				new_text.stylize("cyan", -1)
+				return new_text
+
+		image_process_start = time.time()
+		completed_count = 0
+
+		with Progress(prog_description, BarColumn(), prog_percentage, StyledElapsedColumn(), prog_rate, console=console) as progress:
+			task = progress.add_task("Creating {:d} {}".format(image_count, pluralize("image", image_count)), total=image_count, ips=0, color="conceal")
 			futures = []
+
 			for ref_index, image_ref in enumerate(final_image_refs):
 				compact_ref = { key: image_ref[key] for key in image_keys if key in image_ref }
 
@@ -1116,24 +1161,33 @@ def main():
 							accumulate_timing(new_keys, image_timing)
 						image_ref |= new_keys
 					if result < 0:
-						console.print(error_color + "Image Save Error: " + error_message_color + error_msg)
-					
-					progress.update(task, advance=1)
+						print_error("Image Save Error: ", None, error_msg)
+					else:
+						completed_count += 1
+
+					image_rate = completed_count / (time.time() - image_process_start)
+					progress.update(task, advance=1, ips=image_rate, color="bright_green")
 				else:
 					futures.append(executor.submit(save_versions, compact_ref, ref_index, version_data, header_info))
 
 			if len(futures)>0:
 				for future in concurrent.futures.as_completed(futures, timeout=None):
 					if future.exception():
-						console.print(error_color + "Image scaling exception: " + error_message_color + future.exception())
+						print_error("Image scaling exception: ", None, future.exception())
 					result, error_msg, new_keys, ref_index = future.result()
 					if new_keys:
 						if args.timings:
 							accumulate_timing(new_keys, image_timing)
 						final_image_refs[ref_index] |= new_keys
 					if result < 0:
-						console.print(error_color + "Image Save Error: " + error_message_color + error_msg)
-					progress.update(task, advance=1)
+						print_error("Image Save Error: ", None, error_msg)
+					else:
+						completed_count += 1
+
+					image_rate = completed_count / (time.time() - image_process_start)
+					progress.update(task, advance=1, ips=image_rate, color="bright_green")
+
+			progress.update(task, refresh=True, color="conceal")
 
 	image_process_time = time.time() - image_process_start
 	html_generate_start = time.time()
@@ -1144,8 +1198,8 @@ def main():
 	page_count = len(pages)
 	detail_count = len(final_image_refs)
 	if detail_count>0:
-		with Progress("[progress.description]{task.description}", BarColumn(), "[progress.percentage]{task.percentage:>3.0f}%", console=console) as progress:
-			task = progress.add_task("Creating {:d} detail {}".format(detail_count, pluralize("page", detail_count)), total=detail_count, start=True)
+		with Progress(prog_description, BarColumn(), prog_percentage, console=console) as progress:
+			task = progress.add_task("Creating {:d} detail {}".format(detail_count, pluralize("page", detail_count)), total=detail_count)
 			with open(os.path.join(script_path, "detail.html"), "r") as file:
 				detail_lines = file.readlines()
 			with open(os.path.join(script_path, "movie.html"), "r") as file:
@@ -1201,7 +1255,7 @@ def main():
 							did_save = True
 							
 					except OSError as e:
-						console.print(error_color + "Error saving: " + error_item_color + detail_path, " , " + error_message_color + e)
+						print_error("Error saving: ", detail_path, e)
 	
 	# write the index html pages
 	if page_count>0:
@@ -1220,7 +1274,7 @@ def main():
 		text_index, text_line = extract_section(index_lines, "journaltext")
 		image_index, image_line = extract_section(index_lines, "imageitem")
 		
-		with Progress("[progress.description]{task.description}", BarColumn(), "[progress.percentage]{task.percentage:>3.0f}%", console=console) as progress:
+		with Progress(prog_description, BarColumn(), prog_percentage, console=console) as progress:
 			task = progress.add_task("Creating {:d} index {}".format(page_count, pluralize("page", page_count)), total=page_count)
 
 			for page_index, page in enumerate(pages, 1):
@@ -1298,7 +1352,7 @@ def main():
 							did_save = True
 			
 					except OSError as e:
-						console.print(error_color + "Error saving: " + error_item_color + output_path, " , " + error_message_color + e)
+						print_error("Error saving: ", output_path, e)
 					
 				page_index += 1
 	
@@ -1306,31 +1360,37 @@ def main():
 	total_time = time.time() - start_time
 	
 	if args.timings:
-		console.print()
-		console.print("Timing Summary")
-		format_str = "  {:<18} {:6.3f}s"
-		console.print(format_str.format("File scanning:", file_scan_time))
-		if photo_list_time >= 0.0005: console.print(format_str.format("Enumerate files:", photo_list_time))	
-		if journal_scan_time >= 0.0005: console.print(format_str.format("Journal scanning: ", journal_scan_time))
-		if image_process_time >= 0.0005: console.print(format_str.format("Image Processing:", image_process_time))
+		timing_stats = []
+
+		def add_timing_stat(label, time, list=timing_stats, format="{:<22} [cyan]{:7.3f}s[/]"):
+			if (time >= 0.0005):
+				list.append(format.format(label, time))
+
+		add_timing_stat("Enumerate files:", photo_list_time)
+		add_timing_stat("Metadata scan:", file_scan_time)
+		add_timing_stat("Journal scanning: ", journal_scan_time)
+		add_timing_stat("Image Processing:", image_process_time)
 		if image_timing:
 			display_names = { 
-				"load_time" : "  Image load time:",
-				"open_time" : "  Image open time:",
-				"save_time" : "  Image save time:",
-				"scale_time" : "  Image scaling time:",
-				"header_save_time" : "  Header save time",
-				"header_scale_time" : "  Header scale time"
+				"load_time" : "Image load:",
+				"open_time" : "Image open:",
+				"save_time" : "Image save:",
+				"scale_time" : "Image scaling:",
+				"header_save_time" : "Header save:",
+				"header_scale_time" : "Header scale:"
 			}
 			for key in image_timing.keys():
-				cur_time = image_timing[key]
-				if cur_time >= 0.0005:
-					console.print(format_str.format(display_names[key], cur_time))
-		if html_generate_time >= 0.0005: console.print(format_str.format("HTML Generation:", html_generate_time))
-		console.print(format_str.format("Total Time:", total_time))
+				add_timing_stat("  " + display_names[key], image_timing[key])
+		add_timing_stat("HTML Generation:", html_generate_time)
+		add_timing_stat("Total Time:", total_time)
+		add_timing_stat("Image Rate:", image_rate, format="{:<22}  [bright_green]{:5.1f} ips[/]")
+
+		console.print()
+		console.print(Panel.fit("\n".join(timing_stats), title="Timing Summary"))
 
 	if args.no_cache:
-		console.print(Panel.fit("[dark_orange]WARNING: Image caching is disabled in output files!"))
+		console.print()
+		console.print(Panel.fit(Padding("[dark_orange]WARNING: Image caching is disabled in output files!", (0,4))))
 
 	if args.open_result:
 		dest_url = "file://" + os.path.join(destination_folder, index_url(1, for_html=False))
@@ -1375,3 +1435,6 @@ if __name__ == '__main__':
 	else:
 		console.print(Panel("[green]Begin JournalBuilder"))
 		main()
+
+		# import profile
+		# profile.run('main()')
