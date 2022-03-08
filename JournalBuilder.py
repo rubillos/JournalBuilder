@@ -1,4 +1,4 @@
-#!python3
+#!python
 
 # pip install --upgrade pip
 # pip install cryptography
@@ -11,7 +11,7 @@
 import sys, os, time, shutil, pathlib
 import argparse
 from datetime import datetime, timedelta, timezone
-from PIL import Image
+from PIL import Image, ImageOps
 from pillow_heif import register_heif_opener
 import exifread
 import concurrent.futures
@@ -123,6 +123,8 @@ page_names = []
 page_headers = []
 image_folders = None
 
+photokit_script_path = "PhotoList"
+
 thumb_folder_root = "thumbnails"
 thumb_name_root = "thumb-"
 picture_folder_root = "pictures"
@@ -164,24 +166,20 @@ def print_error(*args):
 
 def open_image_file(file_ref):
 	image = None
-	is_heif = False
 
 	if isinstance(file_ref, str):
 		file_obj = open(file_ref, "rb")
-		path = file_ref
 	else:
 		file_obj = file_ref
-		path = file_ref.name
 
 	try:
 		image = Image.open(file_obj)
-		is_heif = pathlib.Path(path).suffix.lower() in ['.heif', '.heic']
 	except:
 		pass
 
-	return image, is_heif
+	return image
 
-def size_of_image_file(file_ref, orientation=0):
+def size_of_image_file(file_ref):
 	image_size = None
 
 	if isinstance(file_ref, str):
@@ -191,11 +189,8 @@ def size_of_image_file(file_ref, orientation=0):
 
 	try:
 		image = Image.open(path)
+		image = ImageOps.exif_transpose(image)
 		image_size = image.size
-
-		if not pathlib.Path(path).suffix.lower() in ['.heif', '.heic']:
-			if orientation == 6 or orientation == 8:
-				image_size = (image_size[1], image_size[0])
 	except:
 		pass
 
@@ -237,14 +232,6 @@ def save_versions(image_ref, ref_index, version_data, header_info):
 		saved_time = time.time()
 		return (saved_time-scaled_time, scaled_time-start_time)
 
-	def load_image(image, orientation):
-		rotates = { 3:180, 6:270, 8:90 }
-		if orientation in rotates:
-			image = image.rotate(rotates[orientation], expand=True)
-		else:
-			image.load()
-		return image
-
 	do_timing = version_data["timings"]
 	result = 0
 	error_msg = ""
@@ -254,25 +241,18 @@ def save_versions(image_ref, ref_index, version_data, header_info):
 	if do_timing:
 		timing_data = {}
 		start_time = time.time()
-
-	image, is_heif = open_image_file(image_ref["file_path"])
-
+	file_path = image_ref["file_path"]
+	image = open_image_file(file_path)
 	if do_timing:
 		timing_data["open_time"] = time.time() - start_time
+	image = ImageOps.exif_transpose(image)
+	if do_timing:
+		timing_data["load_time"] = time.time() - start_time
+		timing_data["save_time"] = 0.0
+		timing_data["scale_time"] = 0.0
 
 	if image:
-		is_loaded = False
 		image_size = image.size
-		orientation = 0
-
-		if is_heif and "current_size" in image_ref and image_size != image_ref["current_size"]:
-			is_heif = False
-
-		if not is_heif:
-			orientation = image_ref["orientation"]
-			if orientation == 6 or orientation == 8:
-				image_size = (image_size[1], image_size[0])
-
 		width, height = scaled_size(image_size, 1024)
 
 		new_keys = {}
@@ -294,15 +274,6 @@ def save_versions(image_ref, ref_index, version_data, header_info):
 					if large_images[index]:
 						source_image = large_images[index]
 					else:
-						if not is_loaded:
-							if do_timing:
-								start_time = time.time()
-							image = load_image(image, orientation)
-							if do_timing:
-								timing_data["load_time"] = time.time() - start_time
-								timing_data["save_time"] = 0.0
-								timing_data["scale_time"] = 0.0
-							is_loaded = True
 						source_image = image
 					new_size = scaled_size(image_size, size)
 					scaled_image, scale_time, save_time = save_scaled(source_image, new_size, output_path)
@@ -324,13 +295,6 @@ def save_versions(image_ref, ref_index, version_data, header_info):
 							if large_images[index]:
 								source_image = large_images[index]
 							else:
-								if not is_loaded:
-									if do_timing:
-										start_time = time.time()
-									image = load_image(image, orientation)
-									if do_timing:
-										timing_data["load_time"] = time.time() - start_time
-									is_loaded = True
 								source_image = image
 							scale_time, save_time = save_scaled_header(source_image, (header_size[0] * scale, header_size[1] * scale), header_info[1], output_path)
 							if do_timing:
@@ -692,6 +656,73 @@ def scan_header(journal, date_overrides):
 			case("test"):
 				args.no_cache = True
 
+def getFilesPhotos(file_paths):
+	print_now("Opening Photos database...")
+	import osxphotos
+	photosdb = osxphotos.PhotosDB(dbfile=args.data_base)
+	console.print(" done.")
+	album_info = next((info for info in photosdb.album_info if info.title == args.album_name), None)
+	if album_info:
+		for photo in album_info.photos:
+			if photo.isphoto and not photo.hidden and (not args.favorites or photo.favorite):
+				photo_path = photo.path_edited if photo.path_edited else photo.path
+				if photo_path:
+					file_paths.append((photo.original_filename, photo_path, photo.title, photo.date, photo.width, photo.height))
+				else:
+					print_error("Warning: File missing for ", photo.filename)
+	else:
+		parser.error("Photos album not found: " + args.album_name)
+
+def getFilesPhotoKit(file_paths):
+	import urllib.parse
+	def stringToParts(str, file_paths):
+		parts = str.strip().split("\t")
+		if len(parts) == 6:
+			original_name = parts[0]
+			file_path = urllib.parse.unquote(parts[1].removeprefix("file://"))
+			file_date = date_from_string(parts[2].removesuffix(" +0000"))
+			photo_width = parts[3]
+			photo_height = parts[4]
+			is_favorite = (parts[5] == "true")
+			if not args.favorites or is_favorite:
+				file_paths.append((original_name, file_path, None, file_date, photo_width, photo_height))
+
+	prog_description = "[progress.description]{task.description}"
+	prog_percentage = "[progress.percentage]{task.percentage:>3.0f}% "
+	import subprocess
+	run_path = os.path.join(script_path, photokit_script_path)
+	process = subprocess.Popen([run_path, args.album_name], universal_newlines=True, stdout=subprocess.PIPE)
+	count_str = process.stdout.readline()
+	num_files = int(count_str)
+
+	if num_files == 0:
+		parser.error("Photos album not found: " + args.album_name)
+
+	with Progress(prog_description, BarColumn(), prog_percentage, console=console) as progress:
+		task = progress.add_task("Scanning album photos...", total=num_files)
+		done = False
+		while not done:
+			output = process.stdout.readline()
+			if output:
+				stringToParts(output, file_paths)
+				progress.update(task, advance=1)
+			return_code = process.poll()
+			if return_code is not None:
+				for output in process.stdout.readlines():
+					stringToParts(output, file_paths)
+					progress.update(task, advance=1)
+				done = True
+
+def getFilesFolder(file_paths):
+	images_folder_path = args.images_folder
+	if not "/" in images_folder_path:
+		images_folder_path = os.path.join(destination_folder, images_folder_path)
+	if os.path.isdir(images_folder_path):
+		for file_name in os.listdir(images_folder_path):
+			file_path = os.path.join(images_folder_path, file_name)
+			if not file_name.startswith('.') and os.path.isfile(file_path):
+				file_paths.append((file_name, file_path, None, None, None, None, None))
+
 def main():
 	global console
 	global page_width
@@ -729,30 +760,9 @@ def main():
 	file_paths = []
 
 	if args.album_name:
-		print_now("Opening Photos database...")
-		import osxphotos
-		photosdb = osxphotos.PhotosDB(dbfile=args.data_base)
-		console.print(" done.")
-		album_info = next((info for info in photosdb.album_info if info.title == args.album_name), None)
-		if album_info:
-			for photo in album_info.photos:
-				if photo.isphoto and not photo.hidden and (not args.favorites or photo.favorite):
-					photo_path = photo.path_edited if photo.path_edited else photo.path
-					if photo_path:
-						file_paths.append((photo.original_filename, photo_path, photo.title, photo.date, photo.width, photo.height, 0 if photo.path_edited else photo.orientation))
-					else:
-						print_error("Warning: File missing for ", photo.filename)
-		else:
-			parser.error("Photos album not found: " + args.album_name)
+		getFilesPhotoKit(file_paths)
 	else:
-		images_folder_path = args.images_folder
-		if not "/" in images_folder_path:
-			images_folder_path = os.path.join(destination_folder, images_folder_path)
-		if os.path.isdir(images_folder_path):
-			for file_name in os.listdir(images_folder_path):
-				file_path = os.path.join(images_folder_path, file_name)
-				if not file_name.startswith('.') and os.path.isfile(file_path):
-					file_paths.append((file_name, file_path, None, None, None, None, None))
+		getFilesFolder(file_paths)
 			
 	if len(file_paths) == 0:
 		parser.error("No source photos found! Please specify an album name (-a) or an image folder (-i).")
@@ -761,7 +771,7 @@ def main():
 	photo_list_time = file_scan_start - photo_list_start
 		
 	print_now("Retrieving photo metadata...")
-	for file_name, file_path, title, photo_date, photo_width, photo_height, photo_orientation in file_paths:
+	for file_name, file_path, title, photo_date, photo_width, photo_height in file_paths:
 		with open(file_path, "rb") as image_file:
 			tags = exifread.process_file(image_file, details=False)
 			keys = tags.keys()
@@ -781,16 +791,11 @@ def main():
 			image_ref["date"] = photo_date
 			image_ref["date_string"] = photo_date.strftime(date_format)
 
-			if photo_orientation:
-				image_ref["orientation"] = photo_orientation
-			else:
-				image_ref["orientation"] = tags['Image Orientation'].values[0] if 'Image Orientation' in keys else 0
-
 			if args.reorder_thumbs or args.aspect_as_captions:
 				if photo_width and photo_height:
 					image_size = (photo_width, photo_height)
 				else:
-					image_size = size_of_image_file(image_file, image_ref["orientation"])
+					image_size = size_of_image_file(image_file)
 				if image_size:
 					aspect_ratio = float(image_size[0]) / float(image_size[1])
 				else:
@@ -1103,7 +1108,7 @@ def main():
 			"timings" : args.timings
 		}
 
-		image_keys = ["file_path", "file_name", "current_size", "orientation", "picture_num"]
+		image_keys = ["file_path", "file_name", "current_size", "picture_num"]
 
 		if args.timings:
 			image_timing = {

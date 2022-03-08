@@ -7,14 +7,15 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		2531A33D27D536E400C7A2EE /* ArgumentParser in Frameworks */ = {isa = PBXBuildFile; productRef = 2531A33C27D536E400C7A2EE /* ArgumentParser */; };
 		25DAAF1227D53159003B9E41 /* main.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25DAAF1127D53159003B9E41 /* main.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXCopyFilesBuildPhase section */
 		25DAAF0C27D53159003B9E41 /* CopyFiles */ = {
 			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = /usr/share/man/man1/;
+			buildActionMask = 8;
+			dstPath = /Users/randy/Sites/PortlandAve/Files/JournalBuilder;
 			dstSubfolderSpec = 0;
 			files = (
 			);
@@ -23,6 +24,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		255C649C27D6FA0A00FFE428 /* PhotoList.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = PhotoList.entitlements; sourceTree = "<group>"; };
 		25DAAF0E27D53159003B9E41 /* PhotoList */ = {isa = PBXFileReference; explicitFileType = "compiled.mach-o.executable"; includeInIndex = 0; path = PhotoList; sourceTree = BUILT_PRODUCTS_DIR; };
 		25DAAF1127D53159003B9E41 /* main.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = main.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -32,6 +34,7 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				2531A33D27D536E400C7A2EE /* ArgumentParser in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -57,6 +60,7 @@
 		25DAAF1027D53159003B9E41 /* PhotoList */ = {
 			isa = PBXGroup;
 			children = (
+				255C649C27D6FA0A00FFE428 /* PhotoList.entitlements */,
 				25DAAF1127D53159003B9E41 /* main.swift */,
 			);
 			path = PhotoList;
@@ -78,6 +82,9 @@
 			dependencies = (
 			);
 			name = PhotoList;
+			packageProductDependencies = (
+				2531A33C27D536E400C7A2EE /* ArgumentParser */,
+			);
 			productName = PhotoList;
 			productReference = 25DAAF0E27D53159003B9E41 /* PhotoList */;
 			productType = "com.apple.product-type.tool";
@@ -106,6 +113,9 @@
 				Base,
 			);
 			mainGroup = 25DAAF0527D53159003B9E41;
+			packageReferences = (
+				2531A33B27D536E400C7A2EE /* XCRemoteSwiftPackageReference "swift-argument-parser" */,
+			);
 			productRefGroup = 25DAAF0F27D53159003B9E41 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
@@ -245,6 +255,7 @@
 		25DAAF1627D53159003B9E41 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = PhotoList/PhotoList.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 8865UZE66M;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -256,6 +267,7 @@
 		25DAAF1727D53159003B9E41 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				CODE_SIGN_ENTITLEMENTS = PhotoList/PhotoList.entitlements;
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 8865UZE66M;
 				ENABLE_HARDENED_RUNTIME = YES;
@@ -286,6 +298,25 @@
 			defaultConfigurationName = Release;
 		};
 /* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		2531A33B27D536E400C7A2EE /* XCRemoteSwiftPackageReference "swift-argument-parser" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/apple/swift-argument-parser.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.0.0;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		2531A33C27D536E400C7A2EE /* ArgumentParser */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 2531A33B27D536E400C7A2EE /* XCRemoteSwiftPackageReference "swift-argument-parser" */;
+			productName = ArgumentParser;
+		};
+/* End XCSwiftPackageProductDependency section */
 	};
 	rootObject = 25DAAF0627D53159003B9E41 /* Project object */;
 }
