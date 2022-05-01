@@ -2,13 +2,15 @@
 
 # pip install --upgrade pip
 # pip install cryptography
-# pip install pyheif
 # pip install pillow_heif
 # pip install exifread
 # pip install Pillow
-# pip install osxphotos
+# -- pip install osxphotos ; no longer needed
 
-import sys, os, time, shutil, pathlib
+# import cProfile as profile
+# import pstats
+
+import sys, os, time, shutil
 import argparse
 from datetime import datetime, timedelta, timezone
 from PIL import Image, ImageOps
@@ -21,7 +23,7 @@ from rich.text import Text
 from rich.padding import Padding
 from rich.theme import Theme
 from rich.panel import Panel
-import html  
+import html
 import webbrowser
 
 parser = argparse.ArgumentParser(description='Generate a web journal')
@@ -33,6 +35,7 @@ parser.add_argument("-c", "--clean", dest="clean", help="Remove all existing out
 parser.add_argument("-t", "--timing", dest="timings", help="Print timing information", action="store_true")
 parser.add_argument("-s", "--single", dest="single_thread", help="Run all tasks on main thread", action="store_true")
 parser.add_argument("-nc", "--nocache", dest="no_cache", help="Prevent caching of images and links (for debugging)", action="store_true")
+parser.add_argument("-x", "--express", dest="express", help="Express mode - one file per image", action="store_true")
 parser.add_argument("-o", "--open", dest="open_result", help="Open output journal in browser", action="store_true")
 
 group = parser.add_argument_group("journal control")
@@ -45,6 +48,7 @@ group.add_argument("-hh", dest="header_height", help="Header height (default: 25
 group.add_argument("-ta", dest="tall_aspect", help="Tall aspect ratio threshold (default: 1.15)", type=float, default=1.15)
 group.add_argument("-y", dest="year", help="copyright year (default: current year)", default=datetime.today().year)
 group.add_argument("-r", "--reorder", dest="reorder_thumbs", help="Re-order thumbs to minimize page height", action="store_true")
+group.add_argument("-fc", dest="folder_count", help="Maximum number of photo folders to create.", type=int, default=0)
 group.add_argument("-q", dest="jpeg_quality", help="JPEG quality level (default: high)", type=str, choices=["low", "medium", "high", "very_high", "maximum"], default="high")
 group = parser.add_argument_group("album settings")
 group.add_argument("-db", dest="data_base", help="Path to Photos library (default: system library)", type=str, default=None)
@@ -91,6 +95,9 @@ theme = Theme({
 			# "progress.spinner": "white",
 			})
 
+prog_description = "[progress.description]{task.description}"
+prog_percentage = "[progress.percentage]{task.percentage:>3.0f}% "
+
 console = Console(theme=theme)
 
 if args.documentation:
@@ -121,7 +128,6 @@ nav_width = 0
 
 page_names = []
 page_headers = []
-image_folders = None
 
 photokit_script_path = "PhotoList"
 
@@ -143,14 +149,19 @@ register_heif_opener()
 def print_now(str):
 	console.print(str, end="")
 
-def print_error(*args):
+def print_error(*args, dest_console=console):
 	message = args[0] if len(args) >= 1 else None
 	item = args[1] if len(args) >= 2 else None
 	error_message = args[2] if len(args) >= 3 else None
 
+	if item and not isinstance(item, str):
+		item = str(item)
+	if error_message and not isinstance(error_message, str):
+		error_message = str(error_message)
+
 	error_color = "[bold red]"
-	error_item_color = "[bright_magenta]"
-	error_message_color = "[magenta]"
+	error_item_color = "[magenta]"
+	error_message_color = "[yellow]"
 
 	parts = []
 	if message:
@@ -162,21 +173,25 @@ def print_error(*args):
 			parts.extend([error_color, " - "]) 
 		parts.extend([error_message_color, error_message]) 
 
-	console.print("".join(parts))
+	dest_console.print("".join(parts))
 
 def open_image_file(file_ref):
 	image = None
 
-	if isinstance(file_ref, str):
-		file_obj = open(file_ref, "rb")
-	else:
-		file_obj = file_ref
-
 	try:
-		image = Image.open(file_obj)
+		image = Image.open(file_ref)
 	except:
 		pass
 
+	return image
+
+def load_image(image, file_path):
+	lower_path = file_path.lower()
+	if lower_path.endswith(".heic") or lower_path.endswith(".heif"):
+		image.load()
+	else:
+		image = ImageOps.exif_transpose(image)
+	
 	return image
 
 def size_of_image_file(file_ref):
@@ -188,8 +203,8 @@ def size_of_image_file(file_ref):
 		path = file_ref.name
 
 	try:
-		image = Image.open(path)
-		image = ImageOps.exif_transpose(image)
+		image = Image.open(file_ref)
+		image = load_image(image, path)
 		image_size = image.size
 	except:
 		pass
@@ -209,30 +224,31 @@ def scaled_size(input_size, max_size):
 	
 	return (width, height)
 	
-def save_versions(image_ref, ref_index, version_data, header_info):
+def save_versions(image_ref, ref_index, version_data, header_info, image_folders):
 	def save_image(image, path):
 		with open(path, "wb") as file:
 			image.save(file, "JPEG", quality=args.jpeg_quality)
 
-	def save_scaled(image, size, path):
+	def save_scaled(image, size, path, sampling):
 		start_time = time.time()
-		scaled_image = image.resize(size, resample=Image.LANCZOS)
+		scaled_image = image.resize(size, resample=sampling)
 		scaled_time = time.time()
 		save_image(scaled_image, path)
 		saved_time = time.time()
 		return (scaled_image, saved_time-scaled_time, scaled_time-start_time)
 
-	def save_scaled_header(image, size, offset, path):
+	def save_scaled_header(image, size, offset, path, sampling):
 		src_slice_height = int(image.size[0] * size[1] / size[0])
 		src_top = int((image.size[1]-src_slice_height) * offset / 100)
 		start_time = time.time()
-		cropped_image = image.resize(size, box=(0, src_top, image.size[0], src_top+src_slice_height), resample=Image.LANCZOS)
+		cropped_image = image.resize(size, box=(0, src_top, image.size[0], src_top+src_slice_height), resample=sampling)
 		scaled_time = time.time()
 		save_image(cropped_image, path)
 		saved_time = time.time()
 		return (saved_time-scaled_time, scaled_time-start_time)
 
 	do_timing = version_data["timings"]
+	sampling = version_data["resample"]
 	result = 0
 	error_msg = ""
 	timing_data = None
@@ -244,10 +260,13 @@ def save_versions(image_ref, ref_index, version_data, header_info):
 	file_path = image_ref["file_path"]
 	image = open_image_file(file_path)
 	if do_timing:
-		timing_data["open_time"] = time.time() - start_time
-	image = ImageOps.exif_transpose(image)
+		open_end_time = time.time()
+		timing_data["open_time"] = open_end_time - start_time
+	image = load_image(image, file_path)
+	if image.mode != "RGB":
+		image = image.convert("RGB")
 	if do_timing:
-		timing_data["load_time"] = time.time() - start_time
+		timing_data["load_time"] = time.time() - open_end_time
 		timing_data["save_time"] = 0.0
 		timing_data["scale_time"] = 0.0
 
@@ -258,29 +277,28 @@ def save_versions(image_ref, ref_index, version_data, header_info):
 		new_keys = {}
 		new_keys["width@1x"] = width
 		new_keys["height@1x"] = height
-		new_keys["thumb_name"] = "thumb-" + image_ref["picture_num"] + ".jpg"
-		new_keys["picture_name"] = "picture-" + image_ref["picture_num"] + ".jpg"
 		new_keys["image_size"] = image_size
 		if do_timing:
 			new_keys["timing_data"] = timing_data
 
 		large_images = [None, None, None]
 
-		for folder_name, name_root, size, index in version_data["image_folders"]:
+		for folder_name, name_root, size, index in image_folders:
 			output_path = os.path.join(version_data["destination_folder"], folder_name, picture_url(name_root, image_ref["picture_num"], False))
 
 			if version_data["overwrite_images"] or not os.path.isfile(output_path):
 				try:
-					if large_images[index]:
+					if index!=-1 and large_images[index]:
 						source_image = large_images[index]
 					else:
 						source_image = image
 					new_size = scaled_size(image_size, size)
-					scaled_image, scale_time, save_time = save_scaled(source_image, new_size, output_path)
+					scaled_image, save_time, scale_time = save_scaled(source_image, new_size, output_path, sampling)
 					if do_timing:
 						timing_data["save_time"] += save_time
 						timing_data["scale_time"] += scale_time
-					large_images[index] = scaled_image
+					if index!=-1:
+						large_images[index] = scaled_image
 					result = result + 1 if result>=0 else result
 				except OSError as e:
 					result = -1
@@ -296,7 +314,7 @@ def save_versions(image_ref, ref_index, version_data, header_info):
 								source_image = large_images[index]
 							else:
 								source_image = image
-							scale_time, save_time = save_scaled_header(source_image, (header_size[0] * scale, header_size[1] * scale), header_info[1], output_path)
+							save_time, scale_time = save_scaled_header(source_image, (header_size[0] * scale, header_size[1] * scale), header_info[1], output_path, sampling)
 							if do_timing:
 								if not "header_save_time" in timing_data:
 									timing_data["header_save_time"] = 0
@@ -380,7 +398,7 @@ def date_from_string(date_string):
 				return date_time
 			except:
 				pass	
-		print_error("Failed to parse date ", date_string)
+		print_error("Failed to parse date: ", None, date_string)
 	return None
 
 def extract_section(lines, starttext, endtext=None):
@@ -405,10 +423,7 @@ def extract_section(lines, starttext, endtext=None):
 		return (start_index, lines.pop(start_index))
 
 def pluralize(str, count, pad=False):
-	if count == 1:
-		return str+" " if pad else str
-	else:
-		return str+"s"
+	return "{:d} {}{}".format(count, str, "s" if count!=1 else " " if pad else "")
 
 def extract_up_to(text, substr):
 	src_text = text
@@ -479,13 +494,14 @@ def make_nav_bar(nav_lines, page_index):
 	return nav_lines
 	
 def insert_array_into_array(src, dest, index):
-	for item in src:
-		dest.insert(index, item)
-		index += 1
-	return index
+	dest[index:index] = src
+	return index + len(src)
 
 def make_photo_block(photo_lines, image_refs):
 	image_index, image_lines = extract_section(photo_lines, "imagediv", "endimagediv")
+
+	if not args.express:
+		remove_tag(image_lines, "singlethumb")
 
 	for image_ref in image_refs:
 		new_image_lines = image_lines.copy()
@@ -589,17 +605,17 @@ def rearrange(pages):
 						tall_counts.append(tall_count)
 						tall_count = 0
 
-				moves = { 	(1,3):(consolidate, True, False, -1, 1), (3,1):(consolidate, False, True, 1, -1),
-							(1,1): (move_photo, True, True, -1, 1), (3,3): (move_photo, False, False, 1, -1),
-							(2,2):(double_move, True, False, -2, 2) }
+				moves = { 	(1,3):(consolidate, True, False, -1), (3,1):(consolidate, False, True, 1),
+							(1,1): (move_photo, True, True, -1), (3,3): (move_photo, False, False, 1),
+							(2,2):(double_move, True, False, -2) }
 				for line_index in range(0, line_count-1):
 					counts = (tall_counts[line_index], tall_counts[line_index+1])
 					if counts in moves:
-						func, src_find, dest_find, src_change, dest_change = moves[counts]
+						func, src_find, dest_find, src_change = moves[counts]
 						src_index, dest_index = find_wide_tall(src_find, dest_find, line_index)
 						func(src_index, dest_index)
 						tall_counts[line_index] += src_change
-						tall_counts[line_index+1] += dest_change
+						tall_counts[line_index+1] -= src_change
 
 				slides = { 	"0101":(1, 2), "0110":(0, 2), "1001":(3, 1), "1010":(2, 1),
 							"0100":(1, 0), "1011":(1, 0), "0010":(2, 3), "1101":(2, 3), 
@@ -669,12 +685,14 @@ def getFilesPhotos(file_paths):
 				if photo_path:
 					file_paths.append((photo.original_filename, photo_path, photo.title, photo.date, photo.width, photo.height))
 				else:
-					print_error("Warning: File missing for ", photo.filename)
+					print_error("Warning: File missing for ", None, photo.filename)
 	else:
 		parser.error("Photos album not found: " + args.album_name)
 
 def getFilesPhotoKit(file_paths):
 	import urllib.parse
+	import subprocess
+
 	def stringToParts(str, file_paths):
 		parts = str.strip().split("\t")
 		if len(parts) == 6:
@@ -687,13 +705,10 @@ def getFilesPhotoKit(file_paths):
 			if not args.favorites or is_favorite:
 				file_paths.append((original_name, file_path, None, file_date, photo_width, photo_height))
 
-	prog_description = "[progress.description]{task.description}"
-	prog_percentage = "[progress.percentage]{task.percentage:>3.0f}% "
-	import subprocess
 	run_path = os.path.join(script_path, photokit_script_path)
 	process = subprocess.Popen([run_path, args.album_name], universal_newlines=True, stdout=subprocess.PIPE)
 	count_str = process.stdout.readline()
-	num_files = int(count_str)
+	num_files = int(count_str) if len(count_str)>0 else 0
 
 	if num_files == 0:
 		parser.error("Photos album not found: " + args.album_name)
@@ -727,7 +742,6 @@ def main():
 	global console
 	global page_width
 	global nav_width
-	global image_folders
 	global destination_folder
 
 	if args.folder:
@@ -754,7 +768,14 @@ def main():
 	# scan journal header
 	date_overrides = {}
 	scan_header(journal_src.copy(), date_overrides)
-	
+
+	if args.express:
+		args.reorder_thumbs = False
+		args.folder_count = 1
+
+	if args.folder_count == 0:
+		args.folder_count = 100
+
 	# read the file list, get the file info
 	photo_list_start = time.time()
 	file_paths = []
@@ -769,7 +790,16 @@ def main():
 
 	file_scan_start = time.time()
 	photo_list_time = file_scan_start - photo_list_start
-		
+
+	folder_scales = [1, 2, 3, 4, 6, 8, 12]
+	image_folder_count = 1
+
+	def folder_count_for_size(size):
+		for i, scale in enumerate(folder_scales, 1):
+			if scale * base_image_size >= size:
+				return i
+		return len(folder_scales)
+
 	print_now("Retrieving photo metadata...")
 	for file_name, file_path, title, photo_date, photo_width, photo_height in file_paths:
 		with open(file_path, "rb") as image_file:
@@ -805,6 +835,13 @@ def main():
 
 			if photo_width and photo_height:
 				image_ref["current_size"] = (photo_width, photo_height)
+				folder_count = folder_count_for_size(max(int(photo_width), int(photo_height)))
+			else:
+				folder_count = 3
+
+			folder_count = min(args.folder_count, folder_count)
+			image_ref["folder_count"] = folder_count
+			image_folder_count = max(image_folder_count, folder_count)
 
 			if not title and 'Image ImageDescription' in keys:
 				title = tags['Image ImageDescription'].values
@@ -818,7 +855,7 @@ def main():
 				if speed <= 0.5:
 					return "1/{:d}s".format(int(1.0 / speed))
 				else:
-					return "{:d}s".format(speed)
+					return "{:.1f}s".format(speed)
 
 			def format_ev(bias):
 				if abs(bias) <= 0.1:
@@ -885,7 +922,7 @@ def main():
 					pass
 			
 				if not header_ref:
-					print_error("Warning: Header image not found for page: ", text + " - " + tag_parts[0])
+					print_error("Warning: Header image not found for page: ", text, tag_parts[0])
 
 			page_headers.append((header_ref, header_offset, index_page_num))
 			page_names.append(text)
@@ -895,7 +932,7 @@ def main():
 			if caption_ref:
 				caption_ref["caption"] = text
 			else:
-				print_error("Warning: Image for caption not found: ", subtag)
+				print_error("Warning: Image for caption not found: ", None, subtag)
 		elif entries is not None:
 			if tag == "heading":
 				entry = { "Heading": text }
@@ -965,7 +1002,7 @@ def main():
 						movie_refs.append(movie_ref)
 						unplaced_image_refs.remove(movie_ref)
 				else:
-					print_error("Warning: Invalid movie info: ", text)
+					print_error("Warning: Invalid movie info: ", None, text)
 	
 	if len(pages) == 0 and args.album_name:
 		index_page_num = 1
@@ -1022,14 +1059,23 @@ def main():
 	# start output phase
 	journal_scan_time = time.time() - journal_scan_start
 	
-	image_folders = [
-					(picture_folder_root, picture_name_root, base_image_size, 0),
-					(picture_folder_root + "@2x", picture_name_root, base_image_size*2, 1),
-					(picture_folder_root + "@3x", picture_name_root, base_image_size*3, 2),
+	max_image_folders = [
+					(picture_folder_root, picture_name_root, base_image_size, 0)
+				]
+
+	for index in range(1, image_folder_count):
+		scale = folder_scales[index]
+		max_image_folders.append((picture_folder_root + "@" + str(scale) + "x", picture_name_root, base_image_size*scale, index if index<3 else -1))
+	
+	thumb_folders = [
 					(thumb_folder_root, thumb_name_root, thumb_size, 0),
-					(thumb_folder_root + "@2x", thumb_name_root, thumb_size*2, 1),
-					(thumb_folder_root + "@3x", thumb_name_root, thumb_size*3, 2) ]
-						
+					(thumb_folder_root + "@2x", thumb_name_root, thumb_size*2, 0),
+					(thumb_folder_root + "@3x", thumb_name_root, thumb_size*3, 0)
+				]
+
+	if args.express:
+		thumb_folders = thumb_folders[0:1]
+
 	image_columns = 4
 	column_gap = 15
 	page_width = thumb_size * image_columns + column_gap * (image_columns - 1)
@@ -1042,7 +1088,7 @@ def main():
 		folders_removed = 0
 		files_removed = 0
 		for name in os.listdir(destination_folder):
-			path= os.path.join(destination_folder, name)
+			path = os.path.join(destination_folder, name)
 			if name.startswith(thumb_folder_root) or name.startswith(picture_folder_root) or name=="assets":
 				shutil.rmtree(path)
 				folders_removed += 1
@@ -1050,21 +1096,22 @@ def main():
 				os.remove(path)
 				files_removed += 1
 		if files_removed>0 or folders_removed>0:
-			console.print("  removed {:d} {} and {:d} {}.".format(folders_removed, pluralize("folder", folders_removed), files_removed, pluralize("file", files_removed)))
+			console.print(" removed {} and {}.".format(pluralize("folder", folders_removed), pluralize("file", files_removed)))
 		else:
-			console.print("  done.")
+			console.print(" done.")
 
 	#copy assets folder
 	dest_assets_path = os.path.join(destination_folder, "assets")
 	if overwrite_assets and os.path.isdir(dest_assets_path):
 		shutil.rmtree(dest_assets_path)
 	if not os.path.isdir(dest_assets_path):
-		console.print("Copying assets folder...")
+		print_now("Copying assets folder...")
 		src_assets_path = os.path.join(script_path, "assets")
 		try:
 			shutil.copytree(src_assets_path, dest_assets_path)
+			console.print(" done.")
 		except OSError as e:
-			print_error("Error copying: ", dest_assets_path, e)
+			print_error("\nError copying: ", dest_assets_path, e)
 
 	#save movies.txt
 	movie_file_path = os.path.join(destination_folder, "movies.txt")
@@ -1085,8 +1132,11 @@ def main():
 	image_count = len(final_image_refs)
 	if image_count>0:
 		# create image folders
+		dest_folders = []
+		dest_folders.extend(max_image_folders)
+		dest_folders.extend(thumb_folders)
 		create_start = False
-		for folder_name, name_root, size, index in image_folders:
+		for folder_name, _, _, index in dest_folders:
 			dest_path = os.path.join(destination_folder, folder_name)
 			if not os.path.isdir(dest_path):
 				if not create_start:
@@ -1095,20 +1145,20 @@ def main():
 				print_now(".")
 				os.mkdir(dest_path)
 		if create_start:
-			console.print("  done.")
+			console.print(" done.")
 		
 		# resize images
 		version_data = {
 			"page_width" : page_width,
 			"header_height" : header_height,
 			"destination_folder" : destination_folder,
-			"image_folders" : image_folders,
 			"overwrite_images" : overwrite_images,
 			"overwrite_headers" : overwrite_headers,
-			"timings" : args.timings
+			"timings" : args.timings,
+			"resample" : Image.Resampling.BICUBIC if args.express else Image.Resampling.LANCZOS
 		}
 
-		image_keys = ["file_path", "file_name", "current_size", "picture_num"]
+		image_keys = ["file_path", "picture_num"]
 
 		if args.timings:
 			image_timing = {
@@ -1127,8 +1177,6 @@ def main():
 					timing[key] += data[key]
 				new_keys.pop("timing_data")
 
-		prog_description = "[progress.description]{task.description}"
-		prog_percentage = "[progress.percentage]{task.percentage:>3.0f}% "
 		prog_rate = "[{task.fields[color]}] ({task.fields[ips]:>5.1f} images per second)"
 
 		class StyledElapsedColumn(TimeElapsedColumn):
@@ -1144,48 +1192,55 @@ def main():
 				new_text.stylize("cyan", -1)
 				return new_text
 
-		image_process_start = time.time()
-		completed_count = 0
-
 		with Progress(prog_description, BarColumn(), prog_percentage, StyledElapsedColumn(), prog_rate, console=console) as progress:
-			task = progress.add_task("Creating {:d} {}".format(image_count, pluralize("image", image_count)), total=image_count, ips=0, color="conceal")
+			task = progress.add_task("Creating {}".format(pluralize("image", image_count)), total=image_count, ips=0, color="conceal")
 			futures = []
+			image_process_start = time.time()
+			completed_count = 0
 
 			for ref_index, image_ref in enumerate(final_image_refs):
 				compact_ref = { key: image_ref[key] for key in image_keys if key in image_ref }
 
 				file_name = image_ref["file_name"]
+
+				image_folders = max_image_folders[0:image_ref["folder_count"]]
+				image_folders.extend(thumb_folders)
+
 				header_info = None
 				if len(page_headers) > 0:
 					header_info = next((header for header in page_headers if header[0] and header[0]["file_name"] == file_name), None)
+					if header_info:
+						header_info = (None, header_info[1], header_info[2])
 
 				if args.single_thread:
-					result, error_msg, new_keys, index = save_versions(compact_ref, ref_index, version_data, header_info)
+					result, error_msg, new_keys, index = save_versions(compact_ref, ref_index, version_data, header_info, image_folders)
 					if new_keys:
 						if args.timings:
 							accumulate_timing(new_keys, image_timing)
 						image_ref |= new_keys
 					if result < 0:
-						print_error("Image Save Error: ", None, error_msg)
+						print_error("Image Save Error: ", file_name, error_msg, dest_console=progress.console)
 					else:
 						completed_count += 1
 
 					image_rate = completed_count / (time.time() - image_process_start)
 					progress.update(task, advance=1, ips=image_rate, color="bright_green")
 				else:
-					futures.append(executor.submit(save_versions, compact_ref, ref_index, version_data, header_info))
+					futures.append(executor.submit(save_versions, compact_ref, ref_index, version_data, header_info, image_folders))
 
+			index = 0
 			if len(futures)>0:
 				for future in concurrent.futures.as_completed(futures, timeout=None):
 					if future.exception():
-						print_error("Image scaling exception: ", None, future.exception())
+						print_error("Image scaling exception: ", final_image_refs[ref_index]["file_name"], future.exception(), dest_console=progress.console)
 					result, error_msg, new_keys, ref_index = future.result()
 					if new_keys:
 						if args.timings:
 							accumulate_timing(new_keys, image_timing)
 						final_image_refs[ref_index] |= new_keys
+
 					if result < 0:
-						print_error("Image Save Error: ", None, error_msg)
+						print_error("Image Save Error: ", final_image_refs[ref_index]["file_name"], error_msg, dest_console=progress.console)
 					else:
 						completed_count += 1
 
@@ -1204,7 +1259,7 @@ def main():
 	detail_count = len(final_image_refs)
 	if detail_count>0:
 		with Progress(prog_description, BarColumn(), prog_percentage, console=console) as progress:
-			task = progress.add_task("Creating {:d} detail {}".format(detail_count, pluralize("page", detail_count)), total=detail_count)
+			task = progress.add_task("Creating {}".format(pluralize("detail page", detail_count)), total=detail_count)
 			with open(os.path.join(script_path, "detail.html"), "r") as file:
 				detail_lines = file.readlines()
 			with open(os.path.join(script_path, "movie.html"), "r") as file:
@@ -1213,8 +1268,9 @@ def main():
 			print_now("[{}]{}".format(" "*detail_count, "\b"*(detail_count+1)))
 			
 			for detail_number, image_ref in enumerate(final_image_refs, 1):
-				detail_path = os.path.join(destination_folder, detail_url(image_ref["picture_num"]))
-				did_save = False
+				picture_num = image_ref["picture_num"]
+				detail_path = os.path.join(destination_folder, detail_url(picture_num))
+
 				if overwrite_pages or not os.path.isfile(detail_path):
 					if "is_movie" in image_ref:
 						new_detail_lines = movie_lines.copy()
@@ -1224,8 +1280,7 @@ def main():
 					page_title = journal_title + " - " + (image_ref["caption"] if "caption" in image_ref else image_ref["file_name"])
 					
 					replace_key(new_detail_lines, "_PageTitle_", html.escape(page_title))
-					if "picture_name" in image_ref:
-						replace_key(new_detail_lines, "_ImageURL_", image_ref["picture_name"])
+					replace_key(new_detail_lines, "_ImageURL_", picture_url(picture_name_root, picture_num))
 					replace_key(new_detail_lines, "_ImageWidth_", str(image_ref["width@1x"]))
 					replace_key(new_detail_lines, "_ImageHeight_", str(image_ref["height@1x"]))
 				
@@ -1238,6 +1293,8 @@ def main():
 					replace_key(new_detail_lines, "_CurrentPageURL_", detail_url(detail_number))
 					replace_key(new_detail_lines, "_PreviousPageURL_", detail_url(detail_number-1))
 					replace_key(new_detail_lines, "_NextPageURL_", detail_url(detail_number+1))
+
+					replace_key(new_detail_lines, "_SourceCount_", str(image_ref["folder_count"]))
 				
 					exif_text = image_ref["exif"]
 					if "caption" in image_ref:
@@ -1250,6 +1307,9 @@ def main():
 						remove_lines_with_key(new_detail_lines, "removeonfirst")
 					if detail_number == detail_count:
 						remove_lines_with_key(new_detail_lines, "removeonlast")
+						replace_key(new_detail_lines, 'nextsizes="_NextSourceCount_"', "")
+					else:
+						replace_key(new_detail_lines, "_NextSourceCount_", str(final_image_refs[detail_number]["folder_count"]))
 					
 					remove_tags(new_detail_lines, "rkid", "removeonfirst", "removeonlast")
 				
@@ -1257,10 +1317,9 @@ def main():
 						with open(detail_path, "w") as detail_file:
 							detail_file.writelines(new_detail_lines)
 							progress.update(task, advance=1)
-							did_save = True
 							
 					except OSError as e:
-						print_error("Error saving: ", detail_path, e)
+						print_error("Error saving: ", detail_path, e, dest_console=progress.console)
 	
 	# write the index html pages
 	if page_count>0:
@@ -1273,14 +1332,14 @@ def main():
 		replace_key(index_lines, "_HeaderHeight_", str(header_height))
 			
 		nav_index, nav_lines = extract_section(index_lines, "nav", "endnav")
-		photo_index, photo_lines = extract_section(index_lines, "picblock", "endpicblock")
-		title_index, title_line = extract_section(index_lines, "title1item")
-		title_index2, title_line2 = extract_section(index_lines, "title2item")
+		_, photo_lines = extract_section(index_lines, "picblock", "endpicblock")
+		_, title_line = extract_section(index_lines, "title1item")
+		_, title_line2 = extract_section(index_lines, "title2item")
 		text_index, text_line = extract_section(index_lines, "journaltext")
 		image_index, image_line = extract_section(index_lines, "imageitem")
 		
 		with Progress(prog_description, BarColumn(), prog_percentage, console=console) as progress:
-			task = progress.add_task("Creating {:d} index {}".format(page_count, pluralize("page", page_count)), total=page_count)
+			task = progress.add_task("Creating {}".format(pluralize("index page", page_count)), total=page_count)
 
 			for page_index, page in enumerate(pages, 1):
 				new_index_lines = index_lines.copy()
@@ -1347,17 +1406,15 @@ def main():
 			
 				remove_tags(new_index_lines, "rkid", "removeonfirst", "removeonlast")
 			
-				did_save = False
 				output_path = os.path.join(destination_folder, index_url(page_index, for_html=False))
 				if overwrite_pages or not os.path.isfile(output_path):
 					try:
 						with open(output_path, "w") as file:
 							file.writelines(new_index_lines)
 							progress.update(task, advance=1)
-							did_save = True
 			
 					except OSError as e:
-						print_error("Error saving: ", output_path, e)
+						print_error("Error saving: ", output_path, e, dest_console=progress.console)
 					
 				page_index += 1
 	
@@ -1376,16 +1433,16 @@ def main():
 		add_timing_stat("Journal scanning: ", journal_scan_time)
 		add_timing_stat("Image Processing:", image_process_time)
 		if image_timing:
-			display_names = { 
-				"load_time" : "Image load:",
-				"open_time" : "Image open:",
-				"save_time" : "Image save:",
-				"scale_time" : "Image scaling:",
-				"header_save_time" : "Header save:",
-				"header_scale_time" : "Header scale:"
-			}
-			for key in image_timing.keys():
-				add_timing_stat("  " + display_names[key], image_timing[key])
+			display_names = [ 
+				("open_time", "Image open:"),
+				("load_time", "Image load:"),
+				("scale_time", "Image scaling:"),
+				("save_time", "Image save:"),
+				("header_save_time", "Header save:"),
+				("header_scale_time", "Header scale:")
+			]
+			for key, title in display_names:
+				add_timing_stat("  " + title, image_timing[key])
 		add_timing_stat("HTML Generation:", html_generate_time)
 		add_timing_stat("Total Time:", total_time)
 		add_timing_stat("Image Rate:", image_rate, format="{:<22}  [bright_green]{:5.1f} ips[/]")
@@ -1402,44 +1459,56 @@ def main():
 		webbrowser.open(dest_url)
 
 if __name__ == '__main__':
-	if not args.single_thread:
-		# executor = concurrent.futures.ThreadPoolExecutor()
-		executor = concurrent.futures.ProcessPoolExecutor()
-
 	if args.make_template:
 		start_date = None
 		end_date = None
 		dates = args.make_template.split(",")
 
-		if len(dates) == 2:
+		if len(dates) >= 1:
 			start_date = date_from_string(dates[0])
-			end_date = date_from_string(dates[1])
+			if len(dates) >= 2:
+				end_date = date_from_string(dates[1])
+			else:
+				end_date = start_date
 		
 		if start_date and end_date:
-			day_delta = timedelta(hours = 24)
-
 			print("[Site]JournalName")
 			print("[Album]AlbumName")
-			print("[Year]"+args.year)
+			print("[Year]"+str(args.year))
 			print("[Value=thumb_size]220")
 			print("[Value=header_height]280")
 			print()
 			print("[Page=HeaderImage.ext,offset]PageName")
 			print()
 			print("[Heading]Movies")
-			print("[Movie=ThumbImage.ext]Caption,XXX.m4v,(540,30H),(1080,30H),(360,30H),(2160,30H)")
+			print("[Movie=ThumbImage.ext]Caption,XXX.m4v,(540,60H),(1080,60H),(360,30H),(2160,60H)")
 			print()
+
 			while start_date <= end_date:
 				print(start_date.strftime("[Heading=%Y-%m-%d]%A - %B %-d, %Y	Location"))
 				print()
-				start_date = start_date + day_delta
+				start_date = start_date + timedelta(hours = 24)
+
 			print()
 			print("[Epilog=HeaderImage.ext,offset]")
 		else:
 			parser.error("Template creation requires start date and end date: YYYY-MM-DD,YYYY-MM-DD")
 	else:
+		if not args.single_thread:
+			# executor = concurrent.futures.ThreadPoolExecutor()
+			executor = concurrent.futures.ProcessPoolExecutor()
+
 		console.print(Panel("[green]Begin JournalBuilder"))
+
+		# prof = profile.Profile()
+		# prof.enable()
+
 		main()
+
+		# prof.disable()
+
+		# stats = pstats.Stats(prof).strip_dirs().sort_stats("tottime")
+		# stats.print_stats(40)
 
 		# import profile
 		# profile.run('main()')
