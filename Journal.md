@@ -21,7 +21,10 @@ Below is the layout for the journal.txt file
 [Epilog=header.ext,percent]                         ; Special case of [Page] for last page, places remaining images on previous page
 
 [Heading=2020-08-18 <opt HH:MM>]Left Text<opt \t>Right Text     ; Heading with optional date, places images before date above heading
+[Heading=filename.ext]Left Text<opt \t>Right Text   ; Heading with optional date, places images before filename.ext above heading
+
 [Timestamp=2020-08-18 <opt HH:MM>]                  ; Adds all photos before timestamp
+[Timestamp=filename.ext]                            ; Adds all photos before filename.ext
 
 [Movie=thumb_name.ext]caption,base_movie_name.ext,(height1,fps1),(height2,fps2),...   ; Movie thumbnail
                                                     ; heights can be (360,540,720,1080,2160), should at least have 540p version

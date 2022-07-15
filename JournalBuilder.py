@@ -14,7 +14,7 @@ import sys, os, time, shutil
 import argparse
 from datetime import datetime, timedelta, timezone
 from PIL import Image, ImageOps
-from pillow_heif import register_heif_opener
+from pillow_heif import register_heif_opener, HeifImageFile
 import exifread
 import concurrent.futures
 from rich.console import Console
@@ -144,7 +144,7 @@ jpeg_quality = {"low":"web_low", "medium":"web_medium", "high":"web_high", "very
 date_format = "%Y-%m-%d %H:%M:%S"
 date_formats = [date_format, "%Y:%m:%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d", "%Y:%m:%d"]
 
-register_heif_opener()
+register_heif_opener(thumbnails=False)
 
 def print_now(str):
 	console.print(str, end="")
@@ -185,9 +185,8 @@ def open_image_file(file_ref):
 
 	return image
 
-def load_image(image, file_path):
-	lower_path = file_path.lower()
-	if lower_path.endswith(".heic") or lower_path.endswith(".heif"):
+def load_image(image):
+	if isinstance(image, HeifImageFile):
 		image.load()
 	else:
 		image = ImageOps.exif_transpose(image)
@@ -197,14 +196,9 @@ def load_image(image, file_path):
 def size_of_image_file(file_ref):
 	image_size = None
 
-	if isinstance(file_ref, str):
-		path = file_ref
-	else:
-		path = file_ref.name
-
 	try:
 		image = Image.open(file_ref)
-		image = load_image(image, path)
+		image = load_image(image)
 		image_size = image.size
 	except:
 		pass
@@ -257,12 +251,11 @@ def save_versions(image_ref, ref_index, version_data, header_info, image_folders
 	if do_timing:
 		timing_data = {}
 		start_time = time.time()
-	file_path = image_ref["file_path"]
-	image = open_image_file(file_path)
+	image = open_image_file(image_ref["file_path"])
 	if do_timing:
 		open_end_time = time.time()
 		timing_data["open_time"] = open_end_time - start_time
-	image = load_image(image, file_path)
+	image = load_image(image)
 	if image.mode != "RGB":
 		image = image.convert("RGB")
 	if do_timing:
@@ -365,13 +358,13 @@ def remove_lines_with_key(lines, key):
 		else:
 			index += 1
 	
-def get_next_line(src):
+def get_next_line(srcLines):
 	tag = None
 	subtag = ""
 	text = ""
-	line = src.pop(0).strip()
-	while len(src) > 0 and len(line) == 0:
-		line = src.pop(0).strip()
+	line = srcLines.pop(0).strip()
+	while len(srcLines) > 0 and len(line) == 0:
+		line = srcLines.pop(0).strip()
 	if line.startswith("["):
 		tag_end = line.find("]", 1)
 		if tag_end > 1:
@@ -382,8 +375,8 @@ def get_next_line(src):
 	elif len(line)>0:
 		tag = "text"
 		text = line
-		while text.endswith("<br>") and len(src)>0 and not src[0].startswith("["):
-			text = text + '\n' + src.pop(0).strip()
+		while text.endswith("<br>") and len(srcLines)>0 and not srcLines[0].startswith("["):
+			text = text + '\n' + srcLines.pop(0).strip()
 	
 	return (tag, subtag, text)
 
@@ -549,7 +542,19 @@ def add_images_before_date(refs, before_date, dest_list, index_page_num):
 		if len(new_refs) > 0:
 			for ref in new_refs:
 				ref["index_page_num"] = index_page_num
-			dest_list.append({"Photos": new_refs})
+			dest_list.append({"photos": new_refs})
+
+def add_images_before_ref_name(refs, before_ref_name, dest_list, index_page_num):
+	if len(refs):
+		new_refs = []
+		while len(refs) > 0 and refs[0]["file_name"] != before_ref_name:
+			ref = refs.pop(0)
+			new_refs.append(ref)
+
+		if len(new_refs) > 0:
+			for ref in new_refs:
+				ref["index_page_num"] = index_page_num
+			dest_list.append({"photos": new_refs})
 
 def rearrange(pages):
 	def find_item(tall, line_index, start_offset=0):
@@ -591,9 +596,9 @@ def rearrange(pages):
 		insert_photos(src_line_index*4+2, dest1, dest2, src1, src2)
 
 	for page in pages:
-		for entry in page["Entries"]:
-			if "Photos" in entry:
-				photos = entry["Photos"]
+		for entry in page["entries"]:
+			if "photos" in entry:
+				photos = entry["photos"]
 				line_count = (len(photos)+3) // 4
 
 				tall_counts = []
@@ -846,7 +851,7 @@ def main():
 			if not title and 'Image ImageDescription' in keys:
 				title = tags['Image ImageDescription'].values
 
-			if title and (title != "default") and not ("DCIM\\" in title):
+			if title and (title != "default") and not ("DCIM\\" in title) and not ("OLYMPUS DIGITAL CAMERA" in title):
 				image_ref["caption"] = title
 			
 			exif_data = [file_name, image_ref["date_string"]]
@@ -909,7 +914,7 @@ def main():
 			if tag == "epilog":
 				text = "Epilog"
 				add_images_before_date(unplaced_image_refs, None, last_entries if last_entries is not None else entries, index_page_num-1)
-			page = { "Entries": entries }
+			page = { "entries": entries }
 			tag_parts = subtag.split(",")
 			header_ref = None
 			header_offset = 50
@@ -934,25 +939,24 @@ def main():
 			else:
 				print_error("Warning: Image for caption not found: ", None, subtag)
 		elif entries is not None:
-			if tag == "heading":
-				entry = { "Heading": text }
-				date = date_from_string(subtag)
-				if date:
-					entry["Date"] = date
-					use_last = last_entries is not None and len(entries) == 0
-					add_images_before_date(unplaced_image_refs, date, last_entries if use_last else entries, index_page_num-1 if use_last else index_page_num)
-				entries.append(entry)
-			elif tag == "timestamp":
-				date = date_from_string(subtag)
-				if date:
-					use_last = last_entries is not None and len(entries) == 0
-					add_images_before_date(unplaced_image_refs, date, last_entries if use_last else entries, index_page_num-1 if use_last else index_page_num)
+			use_last = last_entries is not None and len(entries) == 0
+			entries_to_use = last_entries if use_last else entries
+			index_to_use = index_page_num-1 if use_last else index_page_num
+			if tag == "heading" or tag == "timestamp":
+				if "." in subtag:
+					add_images_before_ref_name(unplaced_image_refs, subtag, entries_to_use, index_to_use)
+				else:
+					date = date_from_string(subtag)
+					if date:
+						add_images_before_date(unplaced_image_refs, date, entries_to_use, index_to_use)
+				if tag == "heading":
+					entries.append({ "heading": text })
 			elif tag == "text":
-				entries.append({ "Text": text})
+				entries.append({ "text": text})
 			elif tag == "image":
 				tag_parts = subtag.split(",")
 				if len(tag_parts)>=1:
-					entry = { "Image": tag_parts[0] }
+					entry = { "image": tag_parts[0] }
 					if len(tag_parts) >= 2:
 						entry["width"] = int(tag_parts[1])
 					entries.append(entry)
@@ -1009,7 +1013,7 @@ def main():
 		name = args.journal_title if args.journal_title else args.album_name
 		journal_title = name
 		entries = []
-		page = { "Entries": entries }
+		page = { "entries": entries }
 		pages.append(page)
 		page_headers.append((None, 0, index_page_num))
 		page_names.append(name)
@@ -1020,7 +1024,7 @@ def main():
 	# merge movie entries
 	for page_index, page in enumerate(pages):
 		first_photos = None
-		entries = page["Entries"]
+		entries = page["entries"]
 		index = 0
 		while index < len(entries):
 			entry = entries[index]
@@ -1028,12 +1032,12 @@ def main():
 				movie_list = [ entry["Movie"] ]
 				if not first_photos:
 					first_photos = movie_list
-				entries[index] = { "Photos": movie_list }
+				entries[index] = { "photos": movie_list }
 				while index < len(entries)-1 and "Movie" in entries[index+1]:
 					next_movie = entries.pop(index+1)
 					movie_list.append(next_movie["Movie"])
-			elif not first_photos and "Photos" in entry:
-				first_photos = entry["Photos"]
+			elif not first_photos and "photos" in entry:
+				first_photos = entry["photos"]
 			index += 1
 		
 		if first_photos and len(first_photos)>0:
@@ -1048,9 +1052,9 @@ def main():
 	#build the image list
 	final_image_refs = []
 	for page in pages:
-		for entry in page["Entries"]:
-			if "Photos" in entry:
-				final_image_refs.extend(entry["Photos"])
+		for entry in page["entries"]:
+			if "photos" in entry:
+				final_image_refs.extend(entry["photos"])
 	
 	# set the target image numbers
 	for image_index, image_ref in enumerate(final_image_refs, 1):
@@ -1183,14 +1187,9 @@ def main():
 			def render(self, task: "Task") -> Text:
 				elapsed = task.finished_time if task.finished else task.elapsed
 				if elapsed is None:
-					return Text("-h--m--s", style="progress.elapsed")
-				delta = timedelta(seconds=int(elapsed))
-				delta_str = str(delta).replace(":","h-",1).replace(":","m-",1)+"s"
-				new_text = Text(delta_str, style="bright_cyan")
-				new_text.stylize("cyan", 1, 2)
-				new_text.stylize("cyan", 5, 6)
-				new_text.stylize("cyan", -1)
-				return new_text
+					return Text("--s", style="progress.elapsed")
+				else:
+					return Text("{:3.1f}s".format(elapsed), style="bright_cyan")
 
 		with Progress(prog_description, BarColumn(), prog_percentage, StyledElapsedColumn(), prog_rate, console=console) as progress:
 			task = progress.add_task("Creating {}".format(pluralize("image", image_count)), total=image_count, ips=0, color="conceal")
@@ -1372,27 +1371,27 @@ def main():
 				replace_key(new_index_lines, "_Copyright_", copyright_html)
 			
 				new_lines = []		
-				for entry in page["Entries"]:
-					if "Heading" in entry:
-						heading_parts = entry["Heading"].split("\t")
+				for entry in page["entries"]:
+					if "heading" in entry:
+						heading_parts = entry["heading"].split("\t")
 						if len(heading_parts)>0:
 							new_title_line = title_line if len(heading_parts)==1 else title_line2
 							new_title_line = new_title_line.replace("_Text_", heading_parts[0])
 							if len(heading_parts)>1:
 								new_title_line = new_title_line.replace("_Text2_", heading_parts[1])
 							new_lines.append(new_title_line)
-					elif "Text" in entry:
-						new_lines.append(text_line.replace("_Text_", entry["Text"]))
-					elif "Image" in entry:
-						image_filename = entry["Image"]
+					elif "text" in entry:
+						new_lines.append(text_line.replace("_Text_", entry["text"]))
+					elif "image" in entry:
+						image_filename = entry["image"]
 						width, height=size_of_image_file(os.path.join(destination_folder, image_filename))
 						new_image_line = image_line.replace("_ImageURL_", image_filename)
 						dest_width = entry["width"] if "width" in entry else page_width
 						new_image_line = new_image_line.replace("_Width_", str(dest_width))
 						new_image_line = new_image_line.replace("_Height_", str(dest_width * height // width))
 						new_lines.append(new_image_line)
-					elif "Photos" in entry:
-						new_lines.extend(make_photo_block(photo_lines.copy(), entry["Photos"]))
+					elif "photos" in entry:
+						new_lines.extend(make_photo_block(photo_lines.copy(), entry["photos"]))
 						
 				insert_array_into_array(new_lines, new_index_lines, text_index)
 					
@@ -1424,9 +1423,9 @@ def main():
 	if args.timings:
 		timing_stats = []
 
-		def add_timing_stat(label, time, list=timing_stats, format="{:<22} [cyan]{:7.3f}s[/]"):
+		def add_timing_stat(label, time, format="{:<22} [cyan]{:7.3f}s[/]"):
 			if (time >= 0.0005):
-				list.append(format.format(label, time))
+				timing_stats.append(format.format(label, time))
 
 		add_timing_stat("Enumerate files:", photo_list_time)
 		add_timing_stat("Metadata scan:", file_scan_time)
@@ -1441,8 +1440,12 @@ def main():
 				("header_save_time", "Header save:"),
 				("header_scale_time", "Header scale:")
 			]
+			cumulative_time = 0
 			for key, title in display_names:
 				add_timing_stat("  " + title, image_timing[key])
+				cumulative_time += image_timing[key]
+			if not args.single_thread:
+				add_timing_stat("  Proc time ({:.1f}x):".format(cumulative_time / image_process_time), cumulative_time)
 		add_timing_stat("HTML Generation:", html_generate_time)
 		add_timing_stat("Total Time:", total_time)
 		add_timing_stat("Image Rate:", image_rate, format="{:<22}  [bright_green]{:5.1f} ips[/]")
