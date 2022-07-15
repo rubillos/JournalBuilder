@@ -50,6 +50,7 @@ group.add_argument("-y", dest="year", help="copyright year (default: current yea
 group.add_argument("-r", "--reorder", dest="reorder_thumbs", help="Re-order thumbs to minimize page height", action="store_true")
 group.add_argument("-fc", dest="folder_count", help="Maximum number of photo folders to create.", type=int, default=0)
 group.add_argument("-q", dest="jpeg_quality", help="JPEG quality level (default: high)", type=str, choices=["low", "medium", "high", "very_high", "maximum"], default="high")
+
 group = parser.add_argument_group("album settings")
 group.add_argument("-db", dest="data_base", help="Path to Photos library (default: system library)", type=str, default=None)
 group.add_argument("-a", dest="album_name", help="Source album name", type=str, default=None)
