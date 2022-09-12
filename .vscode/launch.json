@@ -38,13 +38,15 @@
                 // "-t"
 
                 // "/Users/randy/Sites/PortlandAve/travel/2022-02-21-Iceland",
-                "/Users/randy/Sites/PortlandAve/travel/Test1",
+                // "/Users/randy/Sites/PortlandAve/travel/Test1",
+                "/Users/randy/Sites/PortlandAve/travel/2022-07-17-Alaska2"
                 // "/Users/randy/Sites/PortlandAve/travel/2022-04-13-Peru",
                 // "/Users/randy/Sites/PortlandAve/travel/2022-02-09-Galapagos",
                 "-c",
-                "-nc",
-                "-t",
-                // "-x",
+                // "-nc",
+                // "-t",
+                "-x",
+                // "-wp",
                 // "-s",
                 "-r"
                 // "-wp",

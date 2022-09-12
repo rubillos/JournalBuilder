@@ -25,6 +25,7 @@ from rich.theme import Theme
 from rich.panel import Panel
 import html
 import webbrowser
+import math
 
 parser = argparse.ArgumentParser(description='Generate a web journal')
 
@@ -776,7 +777,6 @@ def main():
 	scan_header(journal_src.copy(), date_overrides)
 
 	if args.express:
-		args.reorder_thumbs = False
 		args.folder_count = 1
 
 	if args.folder_count == 0:
@@ -902,6 +902,12 @@ def main():
 	index_page_num = 0
 
 	journal_scan_start = time.time()
+
+	image_columns = 4
+	column_gap = 15
+	page_width = thumb_size * image_columns + column_gap * (image_columns - 1)
+	nav_inset = 15
+	nav_width = page_width - 2 * nav_inset
 
 	while len(journal_src) > 0:
 		tag, subtag, text = get_next_line(journal_src)
@@ -1033,7 +1039,7 @@ def main():
 				movie_list = [ entry["Movie"] ]
 				if not first_photos:
 					first_photos = movie_list
-				entries[index] = { "photos": movie_list }
+				entries[index] = { "photos": movie_list, "movielist" : True }
 				while index < len(entries)-1 and "Movie" in entries[index+1]:
 					next_movie = entries.pop(index+1)
 					movie_list.append(next_movie["Movie"])
@@ -1049,6 +1055,39 @@ def main():
 	# re-order thumbnails slightly to minimize page height
 	if args.reorder_thumbs:
 		rearrange(pages)
+
+	# split any giant blocks of pics if we have multiple paragraphs above
+	for page_index, page in enumerate(pages):
+		entries = page["entries"]
+		index = 0
+		textCount = 0
+		while index < len(entries):
+			entry = entries[index]
+			if "photos" in entry and not "movielist" in entry:
+				photoList = entry["photos"]
+				photoRows = math.ceil(len(photoList) / image_columns)
+
+				if textCount>1 and photoRows>1:
+					photoRowsPerGap = int(photoRows/textCount)
+					entries.pop(index)
+					insertIndex = index - textCount + 1
+					index -= 1
+
+					for i in range(textCount):
+						rowsThisBlock = photoRowsPerGap
+						if len(photoList) > (textCount-i) * rowsThisBlock * image_columns:
+							rowsThisBlock += 1
+						lastIndex = rowsThisBlock * image_columns
+						entries.insert(insertIndex, { "photos" : photoList[:lastIndex] })
+						del photoList[:lastIndex]
+						insertIndex += 2
+						index += 1
+				textCount = 0
+			if "text" in entry:
+				textCount += 1
+			else:
+				textCount = 0
+			index += 1
 
 	#build the image list
 	final_image_refs = []
@@ -1080,12 +1119,6 @@ def main():
 
 	if args.express:
 		thumb_folders = thumb_folders[0:1]
-
-	image_columns = 4
-	column_gap = 15
-	page_width = thumb_size * image_columns + column_gap * (image_columns - 1)
-	nav_inset = 15
-	nav_width = page_width - 2 * nav_inset
 
 	# clean existing output files
 	if args.clean:
