@@ -61,14 +61,6 @@ group.add_argument("-f", "--favorite", dest="favorites", help="Include only favo
 group = parser.add_argument_group("template creation")
 group.add_argument("-mt", "--maketemplate", dest="make_template", help="Template start and end dates: YYYY-MM-DD,YYYY-MM-DD", type=str, default=None)
 
-group = parser.add_argument_group("overwriting")
-group.add_argument("-w", "--overwrite", dest="overwrite", help="Overwrite all existing output files", action="store_true")
-group.add_argument("-wi", "--overimages", dest="overwrite_images", help="Overwrite existing output images", action="store_true")
-group.add_argument("-wh", "--overheaders", dest="overwrite_headerimages", help="Overwrite existing header images", action="store_true")
-group.add_argument("-wp", "--overpages", dest="overwrite_pages", help="Overwrite existing html pages", action="store_true")
-group.add_argument("-wm", "--overmovies", dest="overwrite_movies", help="Overwrite existing movies.txt", action="store_true")
-group.add_argument("-wa", "--overassets", dest="overwrite_assets", help="Overwrite existing assets folder", action="store_true")
-
 group = parser.add_argument_group("debugging")
 subgroup = group.add_mutually_exclusive_group()
 subgroup.add_argument("-dc", "--datecaption", dest="dates_as_captions", help="Use dates as thumbnail captions", action="store_true")
@@ -106,12 +98,6 @@ if args.documentation:
 	with open(os.path.join(script_path, "journal.md"), "r") as file:
 		console.print(file.read(), end="")
 	quit()
-
-overwrite_images = args.overwrite or args.overwrite_images
-overwrite_headers = args.overwrite or args.overwrite_headerimages
-overwrite_pages = args.overwrite or args.overwrite_pages
-overwrite_movies = args.overwrite or args.overwrite_movies
-overwrite_assets = args.overwrite or args.overwrite_assets
 
 start_time = time.time()
 
@@ -281,45 +267,43 @@ def save_versions(image_ref, ref_index, version_data, header_info, image_folders
 		for folder_name, name_root, size, index in image_folders:
 			output_path = os.path.join(version_data["destination_folder"], folder_name, picture_url(name_root, image_ref["picture_num"], False))
 
-			if version_data["overwrite_images"] or not os.path.isfile(output_path):
-				try:
-					if index!=-1 and large_images[index]:
-						source_image = large_images[index]
-					else:
-						source_image = image
-					new_size = scaled_size(image_size, size)
-					scaled_image, save_time, scale_time = save_scaled(source_image, new_size, output_path, sampling)
-					if do_timing:
-						timing_data["save_time"] += save_time
-						timing_data["scale_time"] += scale_time
-					if index!=-1:
-						large_images[index] = scaled_image
-					result = result + 1 if result>=0 else result
-				except OSError as e:
-					result = -1
-					error_msg = "Error saving: " + output_path + ", " + str(e)
+			try:
+				if index!=-1 and large_images[index]:
+					source_image = large_images[index]
+				else:
+					source_image = image
+				new_size = scaled_size(image_size, size)
+				scaled_image, save_time, scale_time = save_scaled(source_image, new_size, output_path, sampling)
+				if do_timing:
+					timing_data["save_time"] += save_time
+					timing_data["scale_time"] += scale_time
+				if index!=-1:
+					large_images[index] = scaled_image
+				result = result + 1 if result>=0 else result
+			except OSError as e:
+				result = -1
+				error_msg = "Error saving: " + output_path + ", " + str(e)
 
 			if result >= 0 and header_info:
 				header_size = (version_data["page_width"], version_data["header_height"])
 				for scale, suffix, index in [ (1, "", 0), (2, "@2x", 1), (3, "@3x", 2)]:
 					output_path = os.path.join(version_data["destination_folder"], header_image_url(header_info[2], suffix=suffix, for_html=False))
-					if version_data["overwrite_headers"] or not os.path.isfile(output_path):
-						try:
-							if large_images[index]:
-								source_image = large_images[index]
-							else:
-								source_image = image
-							save_time, scale_time = save_scaled_header(source_image, (header_size[0] * scale, header_size[1] * scale), header_info[1], output_path, sampling)
-							if do_timing:
-								if not "header_save_time" in timing_data:
-									timing_data["header_save_time"] = 0
-									timing_data["header_scale_time"] = 0
-								timing_data["header_save_time"] += save_time
-								timing_data["header_scale_time"] += scale_time
-							result = result + 1 if result >= 0 else result
-						except OSError as e:
-							result = -1
-							error_msg = "Error saving: " + output_path + ", " + str(e)
+					try:
+						if large_images[index]:
+							source_image = large_images[index]
+						else:
+							source_image = image
+						save_time, scale_time = save_scaled_header(source_image, (header_size[0] * scale, header_size[1] * scale), header_info[1], output_path, sampling)
+						if do_timing:
+							if not "header_save_time" in timing_data:
+								timing_data["header_save_time"] = 0
+								timing_data["header_scale_time"] = 0
+							timing_data["header_save_time"] += save_time
+							timing_data["header_scale_time"] += scale_time
+						result = result + 1 if result >= 0 else result
+					except OSError as e:
+						result = -1
+						error_msg = "Error saving: " + output_path + ", " + str(e)
 	else:
 		result = -1
 		error_msg = "Cannot open: " + image_ref["file_path"]
@@ -1140,7 +1124,7 @@ def main():
 
 	#copy assets folder
 	dest_assets_path = os.path.join(destination_folder, "assets")
-	if overwrite_assets and os.path.isdir(dest_assets_path):
+	if os.path.isdir(dest_assets_path):
 		shutil.rmtree(dest_assets_path)
 	if not os.path.isdir(dest_assets_path):
 		print_now("Copying assets folder...")
@@ -1190,8 +1174,6 @@ def main():
 			"page_width" : page_width,
 			"header_height" : header_height,
 			"destination_folder" : destination_folder,
-			"overwrite_images" : overwrite_images,
-			"overwrite_headers" : overwrite_headers,
 			"timings" : args.timings,
 			"resample" : Image.Resampling.BICUBIC if args.express else Image.Resampling.LANCZOS
 		}
@@ -1304,55 +1286,54 @@ def main():
 				picture_num = image_ref["picture_num"]
 				detail_path = os.path.join(destination_folder, detail_url(picture_num))
 
-				if overwrite_pages or not os.path.isfile(detail_path):
-					if "is_movie" in image_ref:
-						new_detail_lines = movie_lines.copy()
-					else:
-						new_detail_lines = detail_lines.copy()
-						
-					page_title = journal_title + " - " + (image_ref["caption"] if "caption" in image_ref else image_ref["file_name"])
+				if "is_movie" in image_ref:
+					new_detail_lines = movie_lines.copy()
+				else:
+					new_detail_lines = detail_lines.copy()
 					
-					replace_key(new_detail_lines, "_PageTitle_", html.escape(page_title))
-					replace_key(new_detail_lines, "_ImageURL_", picture_url(picture_name_root, picture_num))
-					replace_key(new_detail_lines, "_ImageWidth_", str(image_ref["width@1x"]))
-					replace_key(new_detail_lines, "_ImageHeight_", str(image_ref["height@1x"]))
+				page_title = journal_title + " - " + (image_ref["caption"] if "caption" in image_ref else image_ref["file_name"])
 				
-					replace_key(new_detail_lines, "_IndexPageURL_", index_url(image_ref["index_page_num"], for_html=False))
-					
-					replace_key(new_detail_lines, "_PageNumber_", str(detail_number))
-					replace_key(new_detail_lines, "_PreviousPageNumber_", str(detail_number-1))
-					replace_key(new_detail_lines, "_NextPageNumber_", str(detail_number+ 1))
-					
-					replace_key(new_detail_lines, "_CurrentPageURL_", detail_url(detail_number))
-					replace_key(new_detail_lines, "_PreviousPageURL_", detail_url(detail_number-1))
-					replace_key(new_detail_lines, "_NextPageURL_", detail_url(detail_number+1))
+				replace_key(new_detail_lines, "_PageTitle_", html.escape(page_title))
+				replace_key(new_detail_lines, "_ImageURL_", picture_url(picture_name_root, picture_num))
+				replace_key(new_detail_lines, "_ImageWidth_", str(image_ref["width@1x"]))
+				replace_key(new_detail_lines, "_ImageHeight_", str(image_ref["height@1x"]))
+			
+				replace_key(new_detail_lines, "_IndexPageURL_", index_url(image_ref["index_page_num"], for_html=False))
+				
+				replace_key(new_detail_lines, "_PageNumber_", str(detail_number))
+				replace_key(new_detail_lines, "_PreviousPageNumber_", str(detail_number-1))
+				replace_key(new_detail_lines, "_NextPageNumber_", str(detail_number+ 1))
+				
+				replace_key(new_detail_lines, "_CurrentPageURL_", detail_url(detail_number))
+				replace_key(new_detail_lines, "_PreviousPageURL_", detail_url(detail_number-1))
+				replace_key(new_detail_lines, "_NextPageURL_", detail_url(detail_number+1))
 
-					replace_key(new_detail_lines, "_SourceCount_", str(image_ref["folder_count"]))
+				replace_key(new_detail_lines, "_SourceCount_", str(image_ref["folder_count"]))
+			
+				exif_text = image_ref["exif"]
+				if "caption" in image_ref:
+					exif_text += "<br>{}".format(image_ref["caption"])
+				replace_key(new_detail_lines, "_EXIF_", exif_text)
+			
+				replace_key(new_detail_lines, "_Copyright_", copyright_html)
 				
-					exif_text = image_ref["exif"]
-					if "caption" in image_ref:
-						exif_text += "<br>{}".format(image_ref["caption"])
-					replace_key(new_detail_lines, "_EXIF_", exif_text)
+				if detail_number == 1:
+					remove_lines_with_key(new_detail_lines, "removeonfirst")
+				if detail_number == detail_count:
+					remove_lines_with_key(new_detail_lines, "removeonlast")
+					replace_key(new_detail_lines, 'nextsizes="_NextSourceCount_"', "")
+				else:
+					replace_key(new_detail_lines, "_NextSourceCount_", str(final_image_refs[detail_number]["folder_count"]))
 				
-					replace_key(new_detail_lines, "_Copyright_", copyright_html)
-					
-					if detail_number == 1:
-						remove_lines_with_key(new_detail_lines, "removeonfirst")
-					if detail_number == detail_count:
-						remove_lines_with_key(new_detail_lines, "removeonlast")
-						replace_key(new_detail_lines, 'nextsizes="_NextSourceCount_"', "")
-					else:
-						replace_key(new_detail_lines, "_NextSourceCount_", str(final_image_refs[detail_number]["folder_count"]))
-					
-					remove_tags(new_detail_lines, "rkid", "removeonfirst", "removeonlast")
-				
-					try:
-						with open(detail_path, "w") as detail_file:
-							detail_file.writelines(new_detail_lines)
-							progress.update(task, advance=1)
-							
-					except OSError as e:
-						print_error("Error saving: ", detail_path, e, dest_console=progress.console)
+				remove_tags(new_detail_lines, "rkid", "removeonfirst", "removeonlast")
+			
+				try:
+					with open(detail_path, "w") as detail_file:
+						detail_file.writelines(new_detail_lines)
+						progress.update(task, advance=1)
+						
+				except OSError as e:
+					print_error("Error saving: ", detail_path, e, dest_console=progress.console)
 	
 	# write the index html pages
 	if page_count>0:
@@ -1440,14 +1421,13 @@ def main():
 				remove_tags(new_index_lines, "rkid", "removeonfirst", "removeonlast")
 			
 				output_path = os.path.join(destination_folder, index_url(page_index, for_html=False))
-				if overwrite_pages or not os.path.isfile(output_path):
-					try:
-						with open(output_path, "w") as file:
-							file.writelines(new_index_lines)
-							progress.update(task, advance=1)
-			
-					except OSError as e:
-						print_error("Error saving: ", output_path, e, dest_console=progress.console)
+				try:
+					with open(output_path, "w") as file:
+						file.writelines(new_index_lines)
+						progress.update(task, advance=1)
+		
+				except OSError as e:
+					print_error("Error saving: ", output_path, e, dest_console=progress.console)
 					
 				page_index += 1
 	
