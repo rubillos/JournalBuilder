@@ -1,4 +1,4 @@
-JournalBuilder requires a destination folder where all of the generated files will be placed
+JournalBuilder should be run in a destination folder where all of the generated files will be placed
 It should contain a file named journal.txt (override with the -j option) which describes the output journal
 Source images come either from a folder named images (override with the -i option) in the output folder, or
 from an album in the Photos library spcified with the -a option
@@ -6,6 +6,9 @@ from an album in the Photos library spcified with the -a option
 Below is the layout for the journal.txt file
 --------------------------------------------------------------------------------
 [Site]Title                                         ; Site title
+
+<Optional>
+[Album]album name                                   ; Photos album name, sets flags:favorites, open_result, clean, reorder_thumbs
 [Year]2022                                          ; Copyright year
 [Value=thumb_size]190                               ; Thumbnail size
 [Value=header_height]250                            ; Page header height
@@ -13,6 +16,7 @@ Below is the layout for the journal.txt file
 [Value=tall_aspect]1.15                             ; Tall aspect ratio threshold
 [Previous]previous.html                             ; URL of previous site
 [Next]next.html                                     ; URL of next site
+</Optional>
 
 [Caption=filename.ext]Caption                       ; Define a caption for an image
 [Date=filename.ext]2020-08-19 14:06:55              ; Override the date for an image
@@ -20,7 +24,7 @@ Below is the layout for the journal.txt file
 [Page=header.ext,percent]Title                      ; New page with header image and Title. Percent sets header slice offset
 [Epilog=header.ext,percent]                         ; Special case of [Page] for last page, places remaining images on previous page
 
-[Heading=2020-08-18 <opt HH:MM>]Left Text<opt \t>Right Text     ; Heading with optional date, places images before date above heading
+[Heading=2020-08-18 <opt HH:MM>]Left Text<opt \tRight Text>     ; Heading with optional date, places images before date above heading
 [Heading=filename.ext]Left Text<opt \t>Right Text   ; Heading with optional date, places images before filename.ext above heading
 
 [Timestamp=2020-08-18 <opt HH:MM>]                  ; Adds all photos before timestamp
