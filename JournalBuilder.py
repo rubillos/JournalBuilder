@@ -3,6 +3,7 @@
 # pip install --upgrade pip
 # pip install cryptography
 # pip install pillow_heif
+# pip install rich
 # pip install exifread
 # pip install Pillow
 # -- pip install osxphotos ; no longer needed
@@ -39,6 +40,12 @@ parser.add_argument("-nc", "--nocache", dest="no_cache", help="Prevent caching o
 parser.add_argument("-x", "--express", dest="express", help="Express mode - one file per image", action="store_true")
 parser.add_argument("-o", "--open", dest="open_result", help="Open output journal in browser", action="store_true")
 
+group = parser.add_argument_group("album settings")
+group.add_argument("-db", dest="data_base", help="Path to Photos library (default: system library)", type=str, default=None)
+group.add_argument("-a", dest="album_name", help="Source album name", type=str, default=None)
+group.add_argument("-d", "--date", dest="date_sort", help="Show images in chronological order (default: album order)", action="store_true")
+group.add_argument("-f", "--favorite", dest="favorites", help="Include only favorite images", action="store_true")
+
 group = parser.add_argument_group("journal control")
 group.add_argument("-j", dest="journal", help="Journal information file (default: 'journal.txt' in destination folder)", type=str, default="journal.txt")
 group.add_argument("-i", dest="images_folder", help="Source image folder (default: 'images' in destination folder)", type=str, default="images")
@@ -49,14 +56,10 @@ group.add_argument("-hh", dest="header_height", help="Header height (default: 25
 group.add_argument("-ta", dest="tall_aspect", help="Tall aspect ratio threshold (default: 1.15)", type=float, default=1.15)
 group.add_argument("-y", dest="year", help="copyright year (default: current year)", default=datetime.today().year)
 group.add_argument("-r", "--reorder", dest="reorder_thumbs", help="Re-order thumbs to minimize page height", action="store_true")
+group.add_argument("-ds", "--dont_split", dest="dont_split", help="Don't split photo blocks with multiple text paragraphs", action="store_true")
 group.add_argument("-fc", dest="folder_count", help="Maximum number of photo folders to create.", type=int, default=0)
 group.add_argument("-q", dest="jpeg_quality", help="JPEG quality level (default: high)", type=str, choices=["low", "medium", "high", "very_high", "maximum"], default="high")
-
-group = parser.add_argument_group("album settings")
-group.add_argument("-db", dest="data_base", help="Path to Photos library (default: system library)", type=str, default=None)
-group.add_argument("-a", dest="album_name", help="Source album name", type=str, default=None)
-group.add_argument("-d", "--date", dest="date_sort", help="Show images in chronological order (default: album order)", action="store_true")
-group.add_argument("-f", "--favorite", dest="favorites", help="Include only favorite images", action="store_true")
+group.add_argument("-ljs", "--local_javascript", dest="local_js", help="Use local javascipt folder - default is ../../", action="store_true")
 
 group = parser.add_argument_group("template creation")
 group.add_argument("-mt", "--maketemplate", dest="make_template", help="Template start and end dates: YYYY-MM-DD,YYYY-MM-DD", type=str, default=None)
@@ -239,6 +242,7 @@ def save_versions(image_ref, ref_index, version_data, header_info, image_folders
 	if do_timing:
 		timing_data = {}
 		start_time = time.time()
+	# print("Image name: " + image_ref["file_name"])
 	image = open_image_file(image_ref["file_path"])
 	if do_timing:
 		open_end_time = time.time()
@@ -422,11 +426,14 @@ def cache_suffix(for_html=True):
 		return ""
 
 def index_url(index_num, for_html=True):
+	page_count = len(page_names)
 	if index_num <= 0:
 		return previous_external_url if previous_external_url else None
 	elif index_num == 1:
 		return "{}.html{}".format(index_root, cache_suffix(for_html))
-	elif index_num >= len(page_names)+1:
+	elif index_num == page_count:
+		return "{}last.html{}".format(index_root, cache_suffix(for_html))
+	elif index_num >= page_count+1:
 		return next_external_url if next_external_url else None
 	else:
 		return "{}{}.html{}".format(index_root, index_num, cache_suffix(for_html))
@@ -562,6 +569,7 @@ def rearrange(pages):
 		dest_photo = photos.pop(dest_index)
 		src_photo = photos.pop(src_index)
 		insert_photos(src_index // 4 * 4 + 3, dest_photo, src_photo)
+		return True
 
 	def move_photo(src_index, dest_index):
 		src_photo = photos.pop(src_index)
@@ -570,16 +578,28 @@ def rearrange(pages):
 			insert_photos(dest_index-1, photos.pop(next_index), src_photo)
 		else:
 			insert_photos(dest_index-1, src_photo)
+		return True
 
-	def double_move(src_index, dest_index):
+	def double_move(src_index, dest_index, find1, find2):
 		src_line_index = src_index // 4
-		src_index2 = find_item(True, src_line_index, src_index % 4+1)
-		dest_index2 = find_item(False, src_line_index+1, dest_index % 4+1)
-		dest2 = photos.pop(dest_index2)
-		dest1 = photos.pop(dest_index)
-		src2 = photos.pop(src_index2)
-		src1 = photos.pop(src_index)
-		insert_photos(src_line_index*4+2, dest1, dest2, src1, src2)
+		src_index2 = find_item(find1, src_line_index, src_index % 4+1)
+		dest_index2 = find_item(find2, src_line_index+1, dest_index % 4+1)
+
+		if src_index2!=-1 and dest_index2!=-1:
+			dest2 = photos.pop(dest_index2)
+			dest1 = photos.pop(dest_index)
+			src2 = photos.pop(src_index2)
+			src1 = photos.pop(src_index)
+			insert_photos(src_line_index*4+2, dest1, dest2, src1, src2)
+			return True
+		else:
+			return False
+
+	def double_move1(src_index, dest_index):
+		double_move(src_index, dest_index, True, False)
+
+	def double_move2(src_index, dest_index):
+		double_move(src_index, dest_index, False, True)
 
 	for page in pages:
 		for entry in page["entries"]:
@@ -596,29 +616,39 @@ def rearrange(pages):
 						tall_counts.append(tall_count)
 						tall_count = 0
 
-				moves = { 	(1,3):(consolidate, True, False, -1), (3,1):(consolidate, False, True, 1),
+				moves1 = { 	(1,3):(consolidate, True, False, -1), (3,1):(consolidate, False, True, 1),
 							(1,1): (move_photo, True, True, -1), (3,3): (move_photo, False, False, 1),
-							(2,2):(double_move, True, False, -2) }
-				for line_index in range(0, line_count-1):
-					counts = (tall_counts[line_index], tall_counts[line_index+1])
-					if counts in moves:
-						func, src_find, dest_find, src_change = moves[counts]
-						src_index, dest_index = find_wide_tall(src_find, dest_find, line_index)
-						func(src_index, dest_index)
-						tall_counts[line_index] += src_change
-						tall_counts[line_index+1] -= src_change
+							(2,2):(double_move1, True, False, -2) }
+				moves2 = { 	(2,2):(double_move2, False, True, 2) }
+				move_list = [ moves1, moves2 ]
 
-				slides = { 	"0101":(1, 2), "0110":(0, 2), "1001":(3, 1), "1010":(2, 1),
-							"0100":(1, 0), "1011":(1, 0), "0010":(2, 3), "1101":(2, 3), 
-							"011":(0, 2), "100":(0, 2), "010":(1, 2), "101":(1, 2) }
-				for line_index in range(line_count):
-					key = ""
-					index = line_index * 4
-					for i in range(index, min(len(photos), index+4)):
-						key += "1" if photos[i]["tall"] else "0"
-					if key in slides:
-						src_offset, dest_offset = slides[key]
-						photos.insert(index+dest_offset, photos.pop(index+src_offset))
+				moved_count = 1
+				while moved_count > 0:
+					moved_count = 0
+
+					for line_index in range(0, line_count-1):
+						counts = (tall_counts[line_index], tall_counts[line_index+1])
+						for moves in move_list:
+							if counts in moves:
+								func, src_find, dest_find, src_change = moves[counts]
+								src_index, dest_index = find_wide_tall(src_find, dest_find, line_index)
+								if func(src_index, dest_index):
+									tall_counts[line_index] += src_change
+									tall_counts[line_index+1] -= src_change
+									moved_count += 1
+
+					slides = { 	"0101":(1, 2), "0110":(0, 2), "1001":(3, 1), "1010":(2, 1),
+								"0100":(1, 0), "1011":(1, 0), "0010":(2, 3), "1101":(2, 3), 
+								"011":(0, 2), "100":(0, 2), "010":(1, 2), "101":(1, 2) }
+					for line_index in range(line_count):
+						key = ""
+						index = line_index * 4
+						for i in range(index, min(len(photos), index+4)):
+							key += "1" if photos[i]["tall"] else "0"
+						if key in slides:
+							src_offset, dest_offset = slides[key]
+							photos.insert(index+dest_offset, photos.pop(index+src_offset))
+							moved_count += 1
 
 				for index, photo in enumerate(photos):
 					if index != photo["block_index"]:
@@ -792,82 +822,85 @@ def main():
 
 	print_now("Retrieving photo metadata...")
 	for file_name, file_path, title, photo_date, photo_width, photo_height in file_paths:
-		with open(file_path, "rb") as image_file:
-			tags = exifread.process_file(image_file, details=False)
-			keys = tags.keys()
-			image_ref = {}
+		try:
+			with open(file_path, "rb") as image_file:
+				tags = exifread.process_file(image_file, details=False)
+				keys = tags.keys()
+				image_ref = {}
 
-			image_ref["file_name"] = file_name
-			image_ref["file_path"] = file_path
-			
-			if file_name in date_overrides:
-				photo_date = date_from_string(date_overrides[file_name])
-			if not photo_date and 'Image DateTime' in tags:
-				photo_date = date_from_string(tags['Image DateTime'].values)
-			if not photo_date:
-				photo_date = datetime.fromtimestamp(os.path.getmtime(file_path))
-				print_error("Warning: Using os date for ", file_name, photo_date)
-
-			image_ref["date"] = photo_date
-			image_ref["date_string"] = photo_date.strftime(date_format)
-
-			if args.reorder_thumbs or args.aspect_as_captions:
-				if photo_width and photo_height:
-					image_size = (photo_width, photo_height)
-				else:
-					image_size = size_of_image_file(image_file)
-				if image_size:
-					aspect_ratio = float(image_size[0]) / float(image_size[1])
-				else:
-					aspect_ratio = 1.0
-				image_ref["aspect"] = aspect_ratio
-				image_ref["tall"] = aspect_ratio < tall_aspect
-
-			if photo_width and photo_height:
-				image_ref["current_size"] = (photo_width, photo_height)
-				folder_count = folder_count_for_size(max(int(photo_width), int(photo_height)))
-			else:
-				folder_count = 3
-
-			folder_count = min(args.folder_count, folder_count)
-			image_ref["folder_count"] = folder_count
-			image_folder_count = max(image_folder_count, folder_count)
-
-			if not title and 'Image ImageDescription' in keys:
-				title = tags['Image ImageDescription'].values
-
-			if title and (title != "default") and not ("DCIM\\" in title) and not ("OLYMPUS DIGITAL CAMERA" in title):
-				image_ref["caption"] = title
-			
-			exif_data = [file_name, image_ref["date_string"]]
-			
-			def format_shutter(speed):
-				if speed <= 0.5:
-					return "1/{:d}s".format(int(1.0 / speed))
-				else:
-					return "{:.1f}s".format(speed)
-
-			def format_ev(bias):
-				if abs(bias) <= 0.1:
-					return "0ev"
-				else:
-					return "{:+.1f}ev".format(bias)
-
-			if 'EXIF ExposureTime' in keys:
-				exif_data.append(format_shutter(float(tags['EXIF ExposureTime'].values[0])))
-			if 'EXIF FNumber' in keys:
-				exif_data.append("ƒ{:.1f}".format(float(tags['EXIF FNumber'].values[0])))
-			if 'EXIF ExposureBiasValue' in keys:
-				exif_data.append(format_ev(float(tags['EXIF ExposureBiasValue'].values[0])))
-			if 'EXIF ISOSpeedRatings' in keys:
-				exif_data.append("ISO {:d}".format(tags['EXIF ISOSpeedRatings'].values[0]))
-			if 'EXIF FocalLengthIn35mmFilm' in keys:
-				exif_data.append("{:d}mm".format(tags['EXIF FocalLengthIn35mmFilm'].values[0]))
-			if 'Image Model' in keys:
-				exif_data.append(tags['Image Model'].values)
+				image_ref["file_name"] = file_name
+				image_ref["file_path"] = file_path
 				
-			image_ref["exif"] = " &bull; ".join(exif_data)
-			unplaced_image_refs.append(image_ref)
+				if file_name in date_overrides:
+					photo_date = date_from_string(date_overrides[file_name])
+				if not photo_date and 'Image DateTime' in tags:
+					photo_date = date_from_string(tags['Image DateTime'].values)
+				if not photo_date:
+					photo_date = datetime.fromtimestamp(os.path.getmtime(file_path))
+					print_error("Warning: Using os date for ", file_name, photo_date)
+
+				image_ref["date"] = photo_date
+				image_ref["date_string"] = photo_date.strftime(date_format)
+
+				if args.reorder_thumbs or args.aspect_as_captions:
+					if photo_width and photo_height:
+						image_size = (photo_width, photo_height)
+					else:
+						image_size = size_of_image_file(image_file)
+					if image_size:
+						aspect_ratio = float(image_size[0]) / float(image_size[1])
+					else:
+						aspect_ratio = 1.0
+					image_ref["aspect"] = aspect_ratio
+					image_ref["tall"] = aspect_ratio < tall_aspect
+
+				if photo_width and photo_height:
+					image_ref["current_size"] = (photo_width, photo_height)
+					folder_count = folder_count_for_size(max(int(photo_width), int(photo_height)))
+				else:
+					folder_count = 3
+
+				folder_count = min(args.folder_count, folder_count)
+				image_ref["folder_count"] = folder_count
+				image_folder_count = max(image_folder_count, folder_count)
+
+				if not title and 'Image ImageDescription' in keys:
+					title = tags['Image ImageDescription'].values
+
+				if title and (title != "default") and not ("DCIM\\" in title) and not ("OLYMPUS DIGITAL CAMERA" in title):
+					image_ref["caption"] = title
+				
+				exif_data = [file_name, image_ref["date_string"]]
+				
+				def format_shutter(speed):
+					if speed <= 0.5:
+						return "1/{:d}s".format(int(1.0 / speed))
+					else:
+						return "{:.1f}s".format(speed)
+
+				def format_ev(bias):
+					if abs(bias) <= 0.1:
+						return "0ev"
+					else:
+						return "{:+.1f}ev".format(bias)
+
+				if 'EXIF ExposureTime' in keys:
+					exif_data.append(format_shutter(float(tags['EXIF ExposureTime'].values[0])))
+				if 'EXIF FNumber' in keys:
+					exif_data.append("ƒ{:.1f}".format(float(tags['EXIF FNumber'].values[0])))
+				if 'EXIF ExposureBiasValue' in keys:
+					exif_data.append(format_ev(float(tags['EXIF ExposureBiasValue'].values[0])))
+				if 'EXIF ISOSpeedRatings' in keys:
+					exif_data.append("ISO {:d}".format(tags['EXIF ISOSpeedRatings'].values[0]))
+				if 'EXIF FocalLengthIn35mmFilm' in keys:
+					exif_data.append("{:d}mm".format(tags['EXIF FocalLengthIn35mmFilm'].values[0]))
+				if 'Image Model' in keys:
+					exif_data.append(tags['Image Model'].values)
+					
+				image_ref["exif"] = " &bull; ".join(exif_data)
+				unplaced_image_refs.append(image_ref)
+		except OSError as e:
+			print("Error opening file:", file_path, file_name, e)
 	console.print(" done.")
 
 	file_scan_time = time.time() - file_scan_start
@@ -1041,37 +1074,38 @@ def main():
 		rearrange(pages)
 
 	# split any giant blocks of pics if we have multiple paragraphs above
-	for page_index, page in enumerate(pages):
-		entries = page["entries"]
-		index = 0
-		textCount = 0
-		while index < len(entries):
-			entry = entries[index]
-			if "photos" in entry and not "movielist" in entry:
-				photoList = entry["photos"]
-				photoRows = math.ceil(len(photoList) / image_columns)
+	if not args.dont_split:
+		for page_index, page in enumerate(pages):
+			entries = page["entries"]
+			index = 0
+			textCount = 0
+			while index < len(entries):
+				entry = entries[index]
+				if "photos" in entry and not "movielist" in entry:
+					photoList = entry["photos"]
+					photoRows = math.ceil(len(photoList) / image_columns)
 
-				if textCount>1 and photoRows>1:
-					photoRowsPerGap = int(photoRows/textCount)
-					entries.pop(index)
-					insertIndex = index - textCount + 1
-					index -= 1
+					if textCount>1 and photoRows>1:
+						photoRowsPerGap = int(photoRows/textCount)
+						entries.pop(index)
+						insertIndex = index - textCount + 1
+						index -= 1
 
-					for i in range(textCount):
-						rowsThisBlock = photoRowsPerGap
-						if len(photoList) > (textCount-i) * rowsThisBlock * image_columns:
-							rowsThisBlock += 1
-						lastIndex = rowsThisBlock * image_columns
-						entries.insert(insertIndex, { "photos" : photoList[:lastIndex] })
-						del photoList[:lastIndex]
-						insertIndex += 2
-						index += 1
-				textCount = 0
-			if "text" in entry:
-				textCount += 1
-			else:
-				textCount = 0
-			index += 1
+						for i in range(textCount):
+							rowsThisBlock = photoRowsPerGap
+							if len(photoList) > (textCount-i) * rowsThisBlock * image_columns:
+								rowsThisBlock += 1
+							lastIndex = rowsThisBlock * image_columns
+							entries.insert(insertIndex, { "photos" : photoList[:lastIndex] })
+							del photoList[:lastIndex]
+							insertIndex += 2
+							index += 1
+					textCount = 0
+				if "text" in entry:
+					textCount += 1
+				else:
+					textCount = 0
+				index += 1
 
 	#build the image list
 	final_image_refs = []
@@ -1111,7 +1145,7 @@ def main():
 		files_removed = 0
 		for name in os.listdir(destination_folder):
 			path = os.path.join(destination_folder, name)
-			if name.startswith(thumb_folder_root) or name.startswith(picture_folder_root) or name=="assets":
+			if name.startswith(thumb_folder_root) or name.startswith(picture_folder_root) or name=="assets" or name=="js":
 				shutil.rmtree(path)
 				folders_removed += 1
 			elif name.startswith(thumb_name_root) or name.startswith(picture_name_root) or name.startswith(header_name_root) or name.startswith(index_root) or name.startswith(detail_root) or name=="movies.txt":
@@ -1122,18 +1156,23 @@ def main():
 		else:
 			console.print(" done.")
 
-	#copy assets folder
-	dest_assets_path = os.path.join(destination_folder, "assets")
-	if os.path.isdir(dest_assets_path):
-		shutil.rmtree(dest_assets_path)
-	if not os.path.isdir(dest_assets_path):
-		print_now("Copying assets folder...")
-		src_assets_path = os.path.join(script_path, "assets")
-		try:
-			shutil.copytree(src_assets_path, dest_assets_path)
-			console.print(" done.")
-		except OSError as e:
-			print_error("\nError copying: ", dest_assets_path, e)
+	folder_list = [ "assets" ]
+	if args.local_js:
+		folder_list.append("js")
+
+	#copy assets folders
+	for folder_name in folder_list:
+		dest_assets_path = os.path.join(destination_folder, folder_name)
+		if os.path.isdir(dest_assets_path):
+			shutil.rmtree(dest_assets_path)
+		if not os.path.isdir(dest_assets_path):
+			print_now("Copying " + folder_name + " folder...")
+			src_assets_path = os.path.join(script_path, folder_name)
+			try:
+				shutil.copytree(src_assets_path, dest_assets_path)
+				console.print(" done.")
+			except OSError as e:
+				print_error("\nError copying: ", dest_assets_path, e)
 
 	#save movies.txt
 	movie_file_path = os.path.join(destination_folder, "movies.txt")
@@ -1178,7 +1217,7 @@ def main():
 			"resample" : Image.Resampling.BICUBIC if args.express else Image.Resampling.LANCZOS
 		}
 
-		image_keys = ["file_path", "picture_num"]
+		image_keys = ["file_path", "file_name", "picture_num"]
 
 		if args.timings:
 			image_timing = {
@@ -1326,7 +1365,10 @@ def main():
 					replace_key(new_detail_lines, "_NextSourceCount_", str(final_image_refs[detail_number]["folder_count"]))
 				
 				remove_tags(new_detail_lines, "rkid", "removeonfirst", "removeonlast")
-			
+
+				if args.local_js:
+					replace_key(new_detail_lines, "../../", "js/")
+
 				try:
 					with open(detail_path, "w") as detail_file:
 						detail_file.writelines(new_detail_lines)
@@ -1399,12 +1441,15 @@ def main():
 						new_lines.append(text_line.replace("_Text_", entry["text"]))
 					elif "image" in entry:
 						image_filename = entry["image"]
-						width, height=size_of_image_file(os.path.join(destination_folder, image_filename))
-						new_image_line = image_line.replace("_ImageURL_", image_filename)
-						dest_width = entry["width"] if "width" in entry else page_width
-						new_image_line = new_image_line.replace("_Width_", str(dest_width))
-						new_image_line = new_image_line.replace("_Height_", str(dest_width * height // width))
-						new_lines.append(new_image_line)
+						try:
+							width, height=size_of_image_file(os.path.join(destination_folder, image_filename))
+							new_image_line = image_line.replace("_ImageURL_", image_filename)
+							dest_width = entry["width"] if "width" in entry else page_width
+							new_image_line = new_image_line.replace("_Width_", str(dest_width))
+							new_image_line = new_image_line.replace("_Height_", str(dest_width * height // width))
+							new_lines.append(new_image_line)
+						except OSError as e:
+							print_error("Error with static photo: ", image_filename, e, dest_console=progress.console)
 					elif "photos" in entry:
 						new_lines.extend(make_photo_block(photo_lines.copy(), entry["photos"]))
 						
@@ -1419,7 +1464,10 @@ def main():
 					remove_lines_with_key(new_index_lines, "_HeaderImageURL_")
 			
 				remove_tags(new_index_lines, "rkid", "removeonfirst", "removeonlast")
-			
+
+				if args.local_js:
+					replace_key(new_index_lines, "../../", "js/")
+
 				output_path = os.path.join(destination_folder, index_url(page_index, for_html=False))
 				try:
 					with open(output_path, "w") as file:
