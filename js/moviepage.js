@@ -307,6 +307,10 @@ if (moviePageLoaded == null) {
 			
 			var $hdprompt = $("#hdprompt");
 			var $4kprompt = $("#4kprompt");
+
+			if ($4kprompt.length==0) {
+				$4kprompt = $("#fourkprompt");
+			}
 	
 			if (((hasHD && !loadingHD) || (has4K && !loading4K)) && !(hasSmall && requestingSmall)) {
 				var prefix;
