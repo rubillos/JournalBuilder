@@ -46,6 +46,10 @@ group.add_argument("-a", dest="album_name", help="Source album name", type=str, 
 group.add_argument("-d", "--date", dest="date_sort", help="Show images in chronological order (default: album order)", action="store_true")
 group.add_argument("-f", "--favorite", dest="favorites", help="Include only favorite images", action="store_true")
 
+group = parser.add_argument_group("ownership")
+group.add_argument("-copy", "--copyright", dest="copyright", help="Page copyright text.", type=str, default="RickAndRandy.com")
+group.add_argument("-desc", "--metadesc", dest="metadesc", help="Text for the description meta tag.", type=str, default="RickAndRandy.com")
+
 group = parser.add_argument_group("journal control")
 group.add_argument("-j", dest="journal", help="Journal information file (default: 'journal.txt' in destination folder)", type=str, default="journal.txt")
 group.add_argument("-i", dest="images_folder", help="Source image folder (default: 'images' in destination folder)", type=str, default="images")
@@ -1046,6 +1050,7 @@ def main():
 		add_images_before_date(unplaced_image_refs, None, entries, index_page_num)
 	
 	# merge movie entries
+	last_photos = None
 	for page_index, page in enumerate(pages):
 		first_photos = None
 		entries = page["entries"]
@@ -1060,14 +1065,18 @@ def main():
 				while index < len(entries)-1 and "Movie" in entries[index+1]:
 					next_movie = entries.pop(index+1)
 					movie_list.append(next_movie["Movie"])
-			elif not first_photos and "photos" in entry:
-				first_photos = entry["photos"]
+			elif "photos" in entry:
+				if not first_photos:
+					first_photos = entry["photos"]
+				last_photos = entry["photos"]
 			index += 1
 		
-		if first_photos and len(first_photos)>0:
-			header_ref, header_offset, page_num = page_headers[page_index]
-			if not header_ref:
+		header_ref, header_offset, page_num = page_headers[page_index]
+		if not header_ref:
+			if first_photos and len(first_photos)>0:
 				page_headers[page_index] = (first_photos[0], header_offset, page_num)
+			if page_index == len(pages)-1:
+				page_headers[page_index] = (last_photos[-1], header_offset, page_num)
 	
 	# re-order thumbnails slightly to minimize page height
 	if args.reorder_thumbs:
@@ -1306,7 +1315,7 @@ def main():
 	image_process_time = time.time() - image_process_start
 	html_generate_start = time.time()
 	
-	copyright_html = html.escape("©" + str(args.year) + " RickAndRandy.com")
+	copyright_html = html.escape("©" + str(args.year) + " " + args.copyright)
 
 	# save detail html files
 	page_count = len(pages)
@@ -1333,6 +1342,7 @@ def main():
 				page_title = journal_title + " - " + (image_ref["caption"] if "caption" in image_ref else image_ref["file_name"])
 				
 				replace_key(new_detail_lines, "_PageTitle_", html.escape(page_title))
+				replace_key(new_detail_lines, "_MetaDesc_", html.escape(args.metadesc))
 				replace_key(new_detail_lines, "_ImageURL_", picture_url(picture_name_root, picture_num))
 				replace_key(new_detail_lines, "_ImageWidth_", str(image_ref["width@1x"]))
 				replace_key(new_detail_lines, "_ImageHeight_", str(image_ref["height@1x"]))
@@ -1405,6 +1415,7 @@ def main():
 					page_title = page_title + " - " + page_names[page_index-1]
 				
 				replace_key(new_index_lines, "_PageTitle_", html.escape(page_title))
+				replace_key(new_index_lines, "_MetaDesc_", html.escape(args.metadesc))
 				replace_key(new_index_lines, "_SiteHeading_", html.escape(journal_title))
 				
 				if page_count == 1:
