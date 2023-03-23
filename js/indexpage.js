@@ -560,6 +560,7 @@ if (indexPageLoaded == null) {
 		}
 		
 		function findPageNumber(path) {
+			var pageCount = ($nav != null && $nav.length>0) ? $nav.children().length - 2 : 1;
 			var currentPageNumber = 1;
 			
 			if (path == null) {
@@ -567,10 +568,16 @@ if (indexPageLoaded == null) {
 			}
 			
 			var lastSegment = path.substring(path.lastIndexOf("/")+1, path.lastIndexOf("."));
-			var digitIndex = lastSegment.search(/\d/);
 			
-			if (digitIndex >=0) {
-				currentPageNumber = parseInt(lastSegment.substr(digitIndex), 10);
+			if (path.indexOf("indexlast")!=-1) {
+				currentPageNumber = pageCount;
+			}
+			else {
+				var digitIndex = lastSegment.search(/\d/);
+				
+				if (digitIndex >=0) {
+					currentPageNumber = parseInt(lastSegment.substr(digitIndex), 10);
+				}
 			}
 			
 			return(currentPageNumber);
@@ -660,9 +667,12 @@ if (indexPageLoaded == null) {
 				if (newPageNumber != currentPageNumber) {
 					var newRef = "index";
 					
-					if (newPageNumber == -2 || newPageNumber > pageCount) {
+					if (newPageNumber==pageCount && $nextPageLink != undefined && $nextPageLink.length>0) {
+						newRef = $nextPageLink.attr("href");
+					}
+					else if (newPageNumber == -2 || newPageNumber > pageCount) {
 						newRef = "";
-						if ($nextPageLink != undefined) {
+						if ($nextPageLink != undefined && $nextPageLink.length>0) {
 							newRef = $nextPageLink.attr("href");
 						}
 					}
