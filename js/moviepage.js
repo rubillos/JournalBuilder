@@ -32,8 +32,6 @@ if (moviePageLoaded == null) {
 		var useAWS = false;
 			
 		function targetName(objectName) {
-			return objectName;
-
 			var href = document.location.href;
 			var domains = ["rickandrandy.com", "randyandrick.com", "ubillos.com", "portlandave.com", "randyubillos.com", "rickfath.com"];
 			var matched = false;
