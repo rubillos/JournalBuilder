@@ -720,15 +720,21 @@ def getFilesPhotoKit(file_paths):
 
 	def stringToParts(str, file_paths):
 		parts = str.strip().split("\t")
-		if len(parts) == 6:
+		if len(parts) == 6 or len(parts) == 7:
 			original_name = parts[0]
 			file_path = urllib.parse.unquote(parts[1].removeprefix("file://"))
 			file_date = date_from_string(parts[2].removesuffix(" +0000"))
 			photo_width = parts[3]
 			photo_height = parts[4]
+			if len(parts) == 6:
+				is_favorite = (parts[5] == "true")
+				title = None
+			else:
+				is_favorite = (parts[6] == "true")
+				title = parts[5]
 			is_favorite = (parts[5] == "true")
 			if not args.favorites or is_favorite:
-				file_paths.append((original_name, file_path, None, file_date, photo_width, photo_height))
+				file_paths.append((original_name, file_path, title, file_date, photo_width, photo_height))
 
 	run_path = os.path.join(script_path, photokit_script_path)
 	process = subprocess.Popen([run_path, args.album_name], universal_newlines=True, stdout=subprocess.PIPE)
