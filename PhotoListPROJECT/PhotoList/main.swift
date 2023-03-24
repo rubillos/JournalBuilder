@@ -46,6 +46,9 @@ struct ListPhotos: ParsableCommand {
 						print(asset.creationDate!,terminator: separator)
 						print(asset.pixelWidth,terminator: separator)
 						print(asset.pixelHeight,terminator: separator)
+						if let title = asset.value(forKey: "title") as? String {
+              print(title, terminator: separator)
+            }
 						print(asset.isFavorite)
 					}
 				}
