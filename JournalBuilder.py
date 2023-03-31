@@ -1086,7 +1086,9 @@ def main():
 	
 	# re-order thumbnails slightly to minimize page height
 	if args.reorder_thumbs:
+		print_now("Rearranging photos...")
 		rearrange(pages)
+		console.print(" done.")
 
 	# split any giant blocks of pics if we have multiple paragraphs above
 	if not args.dont_split:
@@ -1334,8 +1336,6 @@ def main():
 			with open(os.path.join(script_path, "movie.html"), "r") as file:
 				movie_lines = file.readlines()
 
-			print_now("[{}]{}".format(" "*detail_count, "\b"*(detail_count+1)))
-			
 			for detail_number, image_ref in enumerate(final_image_refs, 1):
 				picture_num = image_ref["picture_num"]
 				detail_path = os.path.join(destination_folder, detail_url(picture_num))
