@@ -732,7 +732,6 @@ def getFilesPhotoKit(file_paths):
 			else:
 				is_favorite = (parts[6] == "true")
 				title = parts[5]
-			is_favorite = (parts[5] == "true")
 			if not args.favorites or is_favorite:
 				file_paths.append((original_name, file_path, title, file_date, photo_width, photo_height))
 
