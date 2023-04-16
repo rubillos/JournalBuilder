@@ -734,7 +734,13 @@ def getFilesPhotoKit(file_paths):
 				file_paths.append((original_name, file_path, title, file_date, photo_width, photo_height))
 
 	run_path = os.path.join(script_path, photokit_script_path)
-	process = subprocess.Popen([run_path, args.album_name], universal_newlines=True, stdout=subprocess.PIPE)
+	temporaryImagePath = "/tmp/journalbuilder"
+	if args.favorites:
+		command = [run_path, args.album_name, '-p', temporaryImagePath, '-f']
+	else:
+		command = [run_path, args.album_name, '-p', temporaryImagePath]
+
+	process = subprocess.Popen(command, universal_newlines=True, stdout=subprocess.PIPE)
 	count_str = process.stdout.readline()
 	num_files = int(count_str) if len(count_str)>0 else 0
 
