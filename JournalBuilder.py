@@ -665,6 +665,7 @@ def scan_header(journal, date_overrides):
 	global base_image_size
 	global header_height
 	global tall_aspect
+	albumFavoritesOnly = True
 
 	while len(journal) > 0:
 		tag, subtag, text = get_next_line(journal)
@@ -688,7 +689,7 @@ def scan_header(journal, date_overrides):
 				next_external_url = text
 			case ("album") if not args.album_name:
 				args.album_name = text
-				args.favorites = True
+				args.favorites = albumFavoritesOnly
 				args.open_result = True
 				args.clean = True
 				args.reorder_thumbs = True
@@ -696,6 +697,13 @@ def scan_header(journal, date_overrides):
 				args.year = int(text)
 			case("test"):
 				args.no_cache = True
+			case("flags"):
+				flag_parts = text.split(",")
+				if 'all' in flag_parts:
+					albumFavoritesOnly = False # catch case that [Flags] is before [Album]
+					args.favorites = False
+				if 'datesort' in flag_parts:
+					args.date_sort = True
 
 def getFilesPhotos(file_paths):
 	print_now("Opening Photos database...")
