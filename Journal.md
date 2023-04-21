@@ -16,7 +16,8 @@ Below is the layout for the journal.txt file
 [Value=tall_aspect]1.15                             ; Tall aspect ratio threshold
 [Previous]previous.html                             ; URL of previous site
 [Next]next.html                                     ; URL of next site
-[Flags]<opt all>,<opt datesort>                     ; all: override favorites only, datesort: override album sort
+[Flags]<opt all>,<opt datesort>,<opt topindex>      ; all: override favorites only, datesort: override album sort, topindex: don't generate images
+                                                    ; and pages, treat caption as links. Format is 'Name [Optional Link Name]' with space to _
 </Optional>
 
 [Caption=filename.ext]Caption                       ; Define a caption for an image
