@@ -64,6 +64,7 @@ group.add_argument("-ds", "--dont_split", dest="dont_split", help="Don't split p
 group.add_argument("-fc", dest="folder_count", help="Maximum number of photo folders to create.", type=int, default=0)
 group.add_argument("-q", dest="jpeg_quality", help="JPEG quality level (default: high)", type=str, choices=["low", "medium", "high", "very_high", "maximum"], default="high")
 group.add_argument("-ljs", "--local_javascript", dest="local_js", help="Use local javascipt folder - default is ../../", action="store_true")
+group.add_argument("-ti", "--top_index", dest="top_index", help="Don't generate detail pages", action="store_true")
 
 group = parser.add_argument_group("template creation")
 group.add_argument("-mt", "--maketemplate", dest="make_template", help="Template start and end dates: YYYY-MM-DD,YYYY-MM-DD", type=str, default=None)
@@ -444,7 +445,22 @@ def index_url(index_num, for_html=True):
 
 def detail_url(picture_number):
 	return("{}{}.html".format(detail_root, picture_number))
-	
+
+def top_link_url(caption):
+	if "[" in caption and "]" in caption:
+		url = caption[caption.index("[")+1:caption.index("]")].strip()
+	else:
+		url = caption.strip()
+	url = url.replace(" ", "_")
+	return("{}/index.html".format(url))
+
+def top_link_name(caption):
+	if "[" in caption and "]" in caption:
+		name = caption[:caption.index("[")].strip()
+	else:
+		name = caption.strip()
+	return(name)
+
 def header_image_url(page_num, for_html=True, suffix=""):
 	return "{} - {:d}{}.jpg{}".format(header_name_root, page_num, suffix, cache_suffix(for_html))
 
@@ -498,7 +514,8 @@ def make_photo_block(photo_lines, image_refs):
 		new_size = scaled_size(image_ref["image_size"], thumb_size)
 		
 		picture_num = image_ref["picture_num"]
-		replace_key(new_image_lines, "_DetailPageURL_", detail_url(picture_num))
+		if not args.top_index:
+			replace_key(new_image_lines, "_DetailPageURL_", detail_url(picture_num))
 		replace_key(new_image_lines, "_ThumbURL_", picture_url(thumb_name_root, picture_num))
 
 		replace_key(new_image_lines, "_ThumbWidth_", str(new_size[0]))
@@ -517,7 +534,11 @@ def make_photo_block(photo_lines, image_refs):
 			caption = html.escape(image_ref["caption"])
 
 		if caption:
-			replace_key(new_image_lines, "_metavalue_", caption)
+			if args.top_index:
+				replace_key(new_image_lines, "_DetailPageURL_", top_link_url(caption))
+				replace_key(new_image_lines, "_metavalue_", top_link_name(caption))
+			else:
+				replace_key(new_image_lines, "_metavalue_", caption)
 		else:
 			remove_lines_with_key(new_image_lines, "_metavalue_")			
 		
@@ -704,6 +725,8 @@ def scan_header(journal, date_overrides):
 					args.favorites = False
 				if 'datesort' in flag_parts:
 					args.date_sort = True
+				if 'topindex' in flag_parts:
+					args.top_index = True
 
 def getFilesPhotos(file_paths):
 	print_now("Opening Photos database...")
@@ -1222,7 +1245,8 @@ def main():
 	if image_count>0:
 		# create image folders
 		dest_folders = []
-		dest_folders.extend(max_image_folders)
+		if not args.top_index:
+			dest_folders.extend(max_image_folders)
 		dest_folders.extend(thumb_folders)
 		create_start = False
 		for folder_name, _, _, index in dest_folders:
@@ -1285,7 +1309,10 @@ def main():
 
 				file_name = image_ref["file_name"]
 
-				image_folders = max_image_folders[0:image_ref["folder_count"]]
+				if not args.top_index:
+					image_folders = max_image_folders[0:image_ref["folder_count"]]
+				else:
+					image_folders = []
 				image_folders.extend(thumb_folders)
 
 				header_info = None
@@ -1339,7 +1366,7 @@ def main():
 	# save detail html files
 	page_count = len(pages)
 	detail_count = len(final_image_refs)
-	if detail_count>0:
+	if detail_count>0 and not args.top_index:
 		with Progress(prog_description, BarColumn(), prog_percentage, console=console) as progress:
 			task = progress.add_task("Creating {}".format(pluralize("detail page", detail_count)), total=detail_count)
 			with open(os.path.join(script_path, "detail.html"), "r") as file:
