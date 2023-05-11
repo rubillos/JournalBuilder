@@ -38,6 +38,7 @@ parser.add_argument("-t", "--timing", dest="timings", help="Print timing informa
 parser.add_argument("-s", "--single", dest="single_thread", help="Run all tasks on main thread", action="store_true")
 parser.add_argument("-nc", "--nocache", dest="no_cache", help="Prevent caching of images and links (for debugging)", action="store_true")
 parser.add_argument("-x", "--express", dest="express", help="Express mode - one file per image", action="store_true")
+parser.add_argument("-xx", "--extraexpress", dest="extraexpress", help="Extra Express mode - one file per image, only generate thumbnails", action="store_true")
 parser.add_argument("-o", "--open", dest="open_result", help="Open output journal in browser", action="store_true")
 
 group = parser.add_argument_group("album settings")
@@ -64,7 +65,7 @@ group.add_argument("-ds", "--dont_split", dest="dont_split", help="Don't split p
 group.add_argument("-fc", dest="folder_count", help="Maximum number of photo folders to create.", type=int, default=0)
 group.add_argument("-q", dest="jpeg_quality", help="JPEG quality level (default: high)", type=str, choices=["low", "medium", "high", "very_high", "maximum"], default="high")
 group.add_argument("-ljs", "--local_javascript", dest="local_js", help="Use local javascipt folder - default is ../../", action="store_true")
-group.add_argument("-ti", "--top_index", dest="top_index", help="Don't generate detail pages", action="store_true")
+group.add_argument("-ti", "--top_index", dest="top_index", help="Generate a top level index page, photo captions are paths to sub-journals", action="store_true")
 
 group = parser.add_argument_group("template creation")
 group.add_argument("-mt", "--maketemplate", dest="make_template", help="Template start and end dates: YYYY-MM-DD,YYYY-MM-DD", type=str, default=None)
@@ -506,7 +507,7 @@ def insert_array_into_array(src, dest, index):
 def make_photo_block(photo_lines, image_refs):
 	image_index, image_lines = extract_section(photo_lines, "imagediv", "endimagediv")
 
-	if not args.express:
+	if not (args.express or args.extraexpress):
 		remove_tag(image_lines, "singlethumb")
 
 	for image_ref in image_refs:
@@ -834,7 +835,7 @@ def main():
 	date_overrides = {}
 	scan_header(journal_src.copy(), date_overrides)
 
-	if args.express:
+	if args.express or args.extraexpress:
 		args.folder_count = 1
 
 	if args.folder_count == 0:
@@ -1186,7 +1187,7 @@ def main():
 					(thumb_folder_root + "@3x", thumb_name_root, thumb_size*3, 0)
 				]
 
-	if args.express:
+	if args.express or args.extraexpress:
 		thumb_folders = thumb_folders[0:1]
 
 	# clean existing output files
@@ -1245,7 +1246,7 @@ def main():
 	if image_count>0:
 		# create image folders
 		dest_folders = []
-		if not args.top_index:
+		if not (args.top_index or args.extraexpress):
 			dest_folders.extend(max_image_folders)
 		dest_folders.extend(thumb_folders)
 		create_start = False
@@ -1266,7 +1267,7 @@ def main():
 			"header_height" : header_height,
 			"destination_folder" : destination_folder,
 			"timings" : args.timings,
-			"resample" : Image.Resampling.BICUBIC if args.express else Image.Resampling.LANCZOS
+			"resample" : Image.Resampling.BICUBIC if args.express or args.extraexpress else Image.Resampling.LANCZOS
 		}
 
 		image_keys = ["file_path", "file_name", "picture_num"]
@@ -1309,7 +1310,7 @@ def main():
 
 				file_name = image_ref["file_name"]
 
-				if not args.top_index:
+				if not (args.top_index or args.extraexpress):
 					image_folders = max_image_folders[0:image_ref["folder_count"]]
 				else:
 					image_folders = []
