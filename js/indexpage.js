@@ -43,9 +43,6 @@ if (indexPageLoaded == null) {
 	if ($content.length == 1) {
 		contentWidth = $content.outerWidth();
 	}
-	if (document.location.pathname.includes("BestOf")) {
-		contentWidth = 810;
-	}
 	if (contentWidth == 0) {
 		contentWidth = $("#headerImg > img").outerWidth();
 	}
@@ -112,7 +109,7 @@ if (indexPageLoaded == null) {
 	if (screenWidth < 700) {
 		if (!panopage && $("body").css("display") == "none") {
 			if ($("#content").attr("norewrap") == null) {
-				if (version=="3") {
+				if (version>="3") {
 					$picblock = $("div.picblock");
 					
 					if ($picblock.length > 0) {
@@ -174,31 +171,36 @@ if (indexPageLoaded == null) {
 					$("ul#nav").css("font-size", "1.3em").css("margin-bottom", "10px");
 				}
 			}
-			$(".journaltitle").css("font-size", "1.6em");
-			var $h1 = $("h1")
-			var head_len = $h1.html().length
-			if (head_len < 50) {
-				var head_size = ""
-				if (head_len > 40) { head_size = "2.5em" }
-				else if (head_len > 30) { head_size = "2.7em" }
-				else { head_size = "3.0em" }
-				$h1.css("font-size", head_size)
+			$(".journaltitle").not(".nomodify").css("font-size", "1.6em");
+			var $h1 = $("h1").not(".nomodify");
+			if ($h1 != null) {
+				var head_len = $h1.html().length;
+				if (head_len < 50) {
+					var head_size = "";
+					if (head_len > 40) { head_size = "2.5em" }
+					else if (head_len > 30) { head_size = "2.7em" }
+					else { head_size = "3.0em" }
+					$h1.css("font-size", head_size);
+				}
+				$h1.css("margin", "10px 0 20px");
 			}
-			$h1.css("margin", "10px 0 20px");
-			$(".journaltext").css("font-size", "2.2em").css("line-height", "1.2em");
-			$("#footer").css("font-size", "3em");
+			$(".journaltext").not(".nomodify").css("font-size", "2.2em").css("line-height", "1.2em");
+			$("#footer").not(".nomodify").css("font-size", "3em");
 		}
 		mobileDevice = true;
 	}
 	
-	var $h1 = $("h1")
-	var head_len = $h1.html().length
-	if (head_len >= 50) {
-		var head_size = ""
-		if (head_len > 80) { head_size = "1.2em" }
-		else if (head_len > 65) { head_size = "1.5em" }
-		else { head_size = "1.9em" }
-		$h1.css("font-size", head_size)
+	var $h1 = $("h1").not(".nomodify");
+	if ($h1 != null) {
+		var $h1 = $("h1")
+		var head_len = $h1.html().length
+		if (head_len >= 50) {
+			var head_size = ""
+			if (head_len > 80) { head_size = "1.2em" }
+			else if (head_len > 65) { head_size = "1.5em" }
+			else { head_size = "1.9em" }
+			$h1.css("font-size", head_size)
+		}
 	}
 
 	var prefixAWS = "http://dvk4w6qeylrn6.cloudfront.net";
@@ -346,8 +348,6 @@ if (indexPageLoaded == null) {
 			videoElements.forEach(function(vid) {
 				count += updateVisibility(vid);
 			});
-			
-// 			console.log("There are " + count + " movies playing.");
 		}
 
 		var pageNumberIndex = 0;
@@ -511,7 +511,7 @@ if (indexPageLoaded == null) {
 		$(".previous").attr("title", "Previous (left arrow)");
 		$(".next").attr("title", "Next (right arrow)");
 		
-		$("#footer > p,#footer > li").wrapInner('<a href="../../index.html"></a>');
+		$("#footer > p,#footer > li").not("a").wrapInner('<a href="../../index.html"></a>');
 
 		function handleNavClick() {
 			window.event.preventDefault();
