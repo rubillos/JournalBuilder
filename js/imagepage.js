@@ -608,7 +608,12 @@ if (imagePageLoaded == null) {
 					canDoLocal = false;
 				}
 				if (canDoLocal) {
-					pushState(hRef);
+					try {
+						pushState(hRef);
+					}
+					catch {
+						canDoLocal = false;
+					}
 				}
 				switchToRef(hRef, canDoLocal);
 			}
