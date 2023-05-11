@@ -447,20 +447,41 @@ def index_url(index_num, for_html=True):
 def detail_url(picture_number):
 	return("{}{}.html".format(detail_root, picture_number))
 
-def top_link_url(caption):
-	if "[" in caption and "]" in caption:
-		url = caption[caption.index("[")+1:caption.index("]")].strip()
-	else:
-		url = caption.strip()
-	url = url.replace(" ", "_")
-	return("{}/index.html".format(url))
-
 def top_link_name(caption):
 	if "[" in caption and "]" in caption:
 		name = caption[:caption.index("[")].strip()
 	else:
 		name = caption.strip()
 	return(name)
+
+def top_link_url(caption, datestring):
+	dateStringParts = datestring.split(" ")
+	date = dateStringParts[0].replace("/", "_")
+
+	path = ""
+	page = ""
+	url = ""
+	if "[" in caption and "]" in caption:		
+		compoundURL = caption[caption.index("[")+1:caption.index("]")].strip()
+		if "/" in compoundURL:
+			urlParts = compoundURL.split("/")
+			if len(urlParts) == 2 and urlParts[1] == '':
+				path = urlParts[0]
+				page = top_link_name(caption)
+			else:
+				page = urlParts[-1]
+				path = "/".join(urlParts[:-1])
+		else:
+				page = compoundURL
+	else:
+		page = caption.strip()
+	if not path == "":
+		url = path + "/"
+	if not date == "":
+		url = url + date + "_"
+	url = url + page
+	url = url.replace(" ", "_")
+	return("{}/index.html".format(url))
 
 def header_image_url(page_num, for_html=True, suffix=""):
 	return "{} - {:d}{}.jpg{}".format(header_name_root, page_num, suffix, cache_suffix(for_html))
@@ -536,7 +557,7 @@ def make_photo_block(photo_lines, image_refs):
 
 		if caption:
 			if args.top_index:
-				replace_key(new_image_lines, "_DetailPageURL_", top_link_url(caption))
+				replace_key(new_image_lines, "_DetailPageURL_", top_link_url(caption, image_ref["date_string"]))
 				replace_key(new_image_lines, "_metavalue_", top_link_name(caption))
 			else:
 				replace_key(new_image_lines, "_metavalue_", caption)
