@@ -30,7 +30,7 @@ Below is the layout for the journal.txt file
 [Epilog=header.ext,percent]                         ; Special case of [Page] for last page, places remaining images on previous page
 
 [Heading=2020-08-18 <opt HH:MM>]Left Text<opt \tRight Text>     ; Heading with optional date, places images before date above heading
-[Heading=filename.ext]Left Text<opt \t>Right Text   ; Heading with optional date, places images before filename.ext above heading
+[Heading=filename.ext]Left Text<opt \tRight Text>   ; Heading with optional date, places images before filename.ext above heading
 
 [Timestamp=2020-08-18 <opt HH:MM>]                  ; Adds all photos before timestamp
 [Timestamp=filename.ext]                            ; Adds all photos before filename.ext
