@@ -1413,6 +1413,9 @@ def main():
 				else:
 					new_detail_lines = detail_lines.copy()
 					
+				if args.local_js:
+					replace_key(new_detail_lines, "../../", "js/")
+
 				page_title = journal_title + " - " + (image_ref["caption"] if "caption" in image_ref else image_ref["file_name"])
 				
 				replace_key(new_detail_lines, "_PageTitle_", html.escape(page_title))
@@ -1451,9 +1454,6 @@ def main():
 				
 				remove_tags(new_detail_lines, "rkid", "removeonfirst", "removeonlast")
 
-				if args.local_js:
-					replace_key(new_detail_lines, "../../", "js/")
-
 				try:
 					with open(detail_path, "w") as detail_file:
 						detail_file.writelines(new_detail_lines)
@@ -1485,6 +1485,9 @@ def main():
 			for page_index, page in enumerate(pages, 1):
 				new_index_lines = index_lines.copy()
 				
+				if args.local_js:
+					replace_key(new_index_lines, "../../", "js/")
+
 				page_title = journal_title
 				if page_count > 1:
 					page_title = page_title + " - " + page_names[page_index-1]
@@ -1551,9 +1554,6 @@ def main():
 					remove_lines_with_key(new_index_lines, "_HeaderImageURL_")
 			
 				remove_tags(new_index_lines, "rkid", "removeonfirst", "removeonlast")
-
-				if args.local_js:
-					replace_key(new_index_lines, "../../", "js/")
 
 				output_path = os.path.join(destination_folder, index_url(page_index, for_html=False))
 				try:
