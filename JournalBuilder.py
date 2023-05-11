@@ -216,25 +216,25 @@ def scaled_size(input_size, max_size):
 	return (width, height)
 	
 def save_versions(image_ref, ref_index, version_data, header_info, image_folders):
-	def save_image(image, path):
+	def save_image(image, path, profile):
 		with open(path, "wb") as file:
-			image.save(file, "JPEG", quality=args.jpeg_quality)
+			image.save(file, "JPEG", quality=args.jpeg_quality, icc_profile=profile)
 
-	def save_scaled(image, size, path, sampling):
+	def save_scaled(image, size, path, sampling, profile):
 		start_time = time.time()
 		scaled_image = image.resize(size, resample=sampling)
 		scaled_time = time.time()
-		save_image(scaled_image, path)
+		save_image(scaled_image, path, profile)
 		saved_time = time.time()
 		return (scaled_image, saved_time-scaled_time, scaled_time-start_time)
 
-	def save_scaled_header(image, size, offset, path, sampling):
+	def save_scaled_header(image, size, offset, path, sampling, profile):
 		src_slice_height = int(image.size[0] * size[1] / size[0])
 		src_top = int((image.size[1]-src_slice_height) * offset / 100)
 		start_time = time.time()
 		cropped_image = image.resize(size, box=(0, src_top, image.size[0], src_top+src_slice_height), resample=sampling)
 		scaled_time = time.time()
-		save_image(cropped_image, path)
+		save_image(cropped_image, path, profile)
 		saved_time = time.time()
 		return (saved_time-scaled_time, scaled_time-start_time)
 
@@ -264,6 +264,7 @@ def save_versions(image_ref, ref_index, version_data, header_info, image_folders
 	if image:
 		image_size = image.size
 		width, height = scaled_size(image_size, 1024)
+		profile = image.info.get("icc_profile")
 
 		new_keys = {}
 		new_keys["width@1x"] = width
@@ -283,7 +284,7 @@ def save_versions(image_ref, ref_index, version_data, header_info, image_folders
 				else:
 					source_image = image
 				new_size = scaled_size(image_size, size)
-				scaled_image, save_time, scale_time = save_scaled(source_image, new_size, output_path, sampling)
+				scaled_image, save_time, scale_time = save_scaled(source_image, new_size, output_path, sampling, profile)
 				if do_timing:
 					timing_data["save_time"] += save_time
 					timing_data["scale_time"] += scale_time
@@ -303,7 +304,7 @@ def save_versions(image_ref, ref_index, version_data, header_info, image_folders
 							source_image = large_images[index]
 						else:
 							source_image = image
-						save_time, scale_time = save_scaled_header(source_image, (header_size[0] * scale, header_size[1] * scale), header_info[1], output_path, sampling)
+						save_time, scale_time = save_scaled_header(source_image, (header_size[0] * scale, header_size[1] * scale), header_info[1], output_path, sampling, profile)
 						if do_timing:
 							if not "header_save_time" in timing_data:
 								timing_data["header_save_time"] = 0
