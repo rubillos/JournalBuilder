@@ -18,6 +18,9 @@ Below is the layout for the journal.txt file
 [Next]next.html                                     ; URL of next site
 [Flags]<opt all>,<opt datesort>,<opt topindex>      ; all: override favorites only, datesort: override album sort, topindex: don't generate images
                                                     ; and pages, treat caption as links. Format is 'Name [Optional Link Name]' with space to _
+[Copyright]text                                     ; overrides the default copyright text, same as the --copyright args
+[Copyrighturl]url                                   ; overrides the _CopyrightURL_ optional field, same as the --copyrighturl args
+[Metadesc]url                                       ; overrides the default meta description field, same as the --mestadesc args
 </Optional>
 
 [Caption=filename.ext]Caption                       ; Define a caption for an image
