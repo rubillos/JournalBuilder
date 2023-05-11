@@ -50,6 +50,7 @@ group.add_argument("-f", "--favorite", dest="favorites", help="Include only favo
 group = parser.add_argument_group("ownership")
 group.add_argument("-copy", "--copyright", dest="copyright", help="Page copyright text.", type=str, default="RickAndRandy.com")
 group.add_argument("-desc", "--metadesc", dest="metadesc", help="Text for the description meta tag.", type=str, default="RickAndRandy.com")
+group.add_argument("-copyurl", "--copyrighturl", dest="copyright_url", help="url for copyright text.", type=str, default="../index.html")
 
 group = parser.add_argument_group("journal control")
 group.add_argument("-j", dest="journal", help="Journal information file (default: 'journal.txt' in destination folder)", type=str, default="journal.txt")
@@ -750,6 +751,12 @@ def scan_header(journal, date_overrides):
 					args.date_sort = True
 				if 'topindex' in flag_parts:
 					args.top_index = True
+			case("copyright"):
+				args.copyright = text
+			case("metadesc"):
+				args.metadesc = text
+			case("copyrighturl"):
+				args.copyright_url = text
 
 def getFilesPhotos(file_paths):
 	print_now("Opening Photos database...")
@@ -1432,6 +1439,7 @@ def main():
 				replace_key(new_detail_lines, "_EXIF_", exif_text)
 			
 				replace_key(new_detail_lines, "_Copyright_", copyright_html)
+				replace_key(new_detail_lines, "_CopyrightURL_", args.copyright_url)
 				
 				if detail_number == 1:
 					remove_lines_with_key(new_detail_lines, "removeonfirst")
@@ -1504,7 +1512,8 @@ def main():
 						remove_lines_with_key(new_index_lines, "_NextPageURL_")
 
 				replace_key(new_index_lines, "_Copyright_", copyright_html)
-			
+				replace_key(new_index_lines, "_CopyrightURL_", args.copyright_url)
+
 				new_lines = []		
 				for entry in page["entries"]:
 					if "heading" in entry:
