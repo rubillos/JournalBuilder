@@ -4,9 +4,8 @@
 # pip install cryptography
 # pip install pillow_heif
 # pip install rich
-# pip install exifread
+# pip install "exifread<3"
 # pip install Pillow
-# -- pip install osxphotos ; no longer needed
 
 # import cProfile as profile
 # import pstats
@@ -757,23 +756,6 @@ def scan_header(journal, date_overrides):
 				args.metadesc = text
 			case("copyrighturl"):
 				args.copyright_url = text
-
-def getFilesPhotos(file_paths):
-	print_now("Opening Photos database...")
-	import osxphotos
-	photosdb = osxphotos.PhotosDB(dbfile=args.data_base)
-	console.print(" done.")
-	album_info = next((info for info in photosdb.album_info if info.title == args.album_name), None)
-	if album_info:
-		for photo in album_info.photos:
-			if photo.isphoto and not photo.hidden and (not args.favorites or photo.favorite):
-				photo_path = photo.path_edited if photo.path_edited else photo.path
-				if photo_path:
-					file_paths.append((photo.original_filename, photo_path, photo.title, photo.date, photo.width, photo.height))
-				else:
-					print_error("Warning: File missing for ", None, photo.filename)
-	else:
-		parser.error("Photos album not found: " + args.album_name)
 
 def getFilesPhotoKit(file_paths):
 	import urllib.parse
