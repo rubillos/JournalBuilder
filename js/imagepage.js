@@ -85,7 +85,7 @@ if (imagePageLoaded == null) {
 				currentPath = currentPath.substring(0, currentPath.lastIndexOf("/"))
 				
 				var iconPath = baseURL + "FrontPageGraphics/download.png";
-				var phpPath = baseURL + "download/download.php"
+				var phpPath = baseURL + "download/download.php";
 				
 				var $download = $('<a id="downlink" href="'+phpPath+'?file=' + imageName + '&path=' + currentPath + '"><img id="download" src="'+iconPath+'" width="'+iconSize+'" height="'+iconSize+'" style="position: relative; top:'+top+'px; padding-left:'+iconSize+'px; opacity: ' + opacity + '; background-color: transparent;" title="Download Full Image"></a>');
 				
