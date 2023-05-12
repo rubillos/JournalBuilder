@@ -579,9 +579,11 @@ if (moviePageLoaded == null) {
 			});
 	
 			$("#previous").attr("title", "Previous (left arrow)");
-			$("#next").attr("title", "Next (right arrow)");
+			$("#next").attr("title", "Next (spacebar or right arrow)");
 			
-			$("#footer > p,#footer > li").wrapInner('<a href="../../index.html"></a>');
+			$("#footer > p, #footer > li").wrapInner('<a href="../../index.html"></a>');
+			$(".grow > a, center > a").not(".nomodify").css("background-color","#CCC").css("padding","3px 15px");
+			$("center > a").not(".nomodify").parent().css("margin-top", "12px");
 
 			if ("ontouchstart" in document.documentElement) {
 		 		$("a").css("touch-action", "manipulation");
