@@ -228,7 +228,7 @@ if (imagePageLoaded == null) {
 			var filename = $img.attr("filename");
 			if (filename == null) {
 				filename = $img.attr("src");
-				if (filename == null) {
+				if (filename == null && $img.length > 0) {
 					filename = $img[0].currentSrc;
 				}
 				if (filename != null) {
@@ -398,7 +398,7 @@ if (imagePageLoaded == null) {
 		function updateItems() {
 			$("#previous,li.previous").attr("title", "Previous (left arrow)");
 			$("#previous,li.previous").find("a").click(handleClick);
-			$("#next,.next").attr("title", "Next (right arrow)");
+			$("#next,.next").attr("title", "Next (spacebar or right arrow)");
 			$("#next,.next").find("a").click(handleClick);
 			$("#index,li.index").attr("title", "Goto Index (i)");
 			$("#index,li.index").find("a").click(handleClick);
