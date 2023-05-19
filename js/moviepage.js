@@ -6,7 +6,7 @@ if (moviePageLoaded == null) {
 	var prefixAWS = "http://dvk4w6qeylrn6.cloudfront.net";
 
 	$(function(){
-		var isIPhoneX = (screen.width==812 || screen.height==812);
+		var isIPhoneX = (screen.width>=812 || screen.height>=812);
 		var smallScreen = screen.width<700;
 	
 		var pageNumberIndex = 0;
