@@ -285,6 +285,10 @@ if (moviePageLoaded == null) {
 			} else if (hasSmall && smallScreen && !isIPhoneX) {
 				movieInfo = movieItems[smallMovieIndex];
 				smallMovie = true;
+			} else if (!smallScreen && hasHD) {
+				movieInfo = movieItems[HDMovieIndex];
+				requestingHD = true;
+				loadingHD = true;
 			} else {
 				movieInfo = movieItems[standardMovieIndex];
 			}
