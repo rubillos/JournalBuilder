@@ -57,6 +57,10 @@ if (imagePageLoaded == null) {
 		}
 
 		function addDownloadLink(imageName) {
+			if ($("body").hasClass("nodownload")) {
+				return;
+			}
+
 			var iconSize = 32;
 			var top = 3;
 			var $current = $("div#current");
@@ -314,8 +318,15 @@ if (imagePageLoaded == null) {
 		}
 
 		function useableSize() {
+			var windowWidth = $(window).width();
+			var windowHeight = $(window).height();
+
+			if ($("#matte").length>0 && (windowWidth > 4.0 / 3.0 * windowHeight)) {
+				windowWidth = 4.0 / 3.0 * windowHeight;
+			}
+
 			var hMargin = 10 + sideWidth;
-			var landscape = $(window).width() > $(window).height();
+			var landscape = windowWidth > windowHeight;
 			var vMargin = 88;
 			var borderRows = $(".row");
 			
@@ -338,12 +349,50 @@ if (imagePageLoaded == null) {
 				vMargin = 0;
 			}
 			
-			var windowWidth = Math.max(320, $(window).width() - hMargin);
-			var windowHeight = Math.max(320, $(window).height() - vMargin);
+			windowWidth = Math.max(320, windowWidth - hMargin);
+			windowHeight = Math.max(320, windowHeight - vMargin);
 
 			return([windowWidth, windowHeight]);
 		}
 	
+		function setupMatte() {
+			var $matte = $("#matte");
+			if ($matte.length == 0) {
+				return;
+			}
+			
+			var windowWidth = $(window).width();
+			var windowHeight = $(window).height();
+
+			var minWidth = windowWidth;
+			if (windowWidth > 4.0 / 3.0 * windowHeight) {
+				minWidth = Math.max(320, 4.0 / 3.0 * windowHeight);
+			}
+
+			var minPadding = 30;
+			var minMargin = 30;
+			var matteMargin = 30;
+
+			if (minWidth > windowWidth) {
+				matteMargin = 0;
+				// console.log("minWidth > ");
+			} else if ((minWidth + 2 * minPadding + 2 * minMargin < windowWidth) && (minWidth + 0.5 * (windowWidth - minWidth) > 16.0 / 9.0 * windowHeight)) {
+				if (16.0 / 9.0 * windowHeight > minWidth + 2 * minPadding) {
+					// console.log("16.9 ");
+					matteMargin = 0.5 * (windowWidth - 16.0 / 9.0 * windowHeight);
+				} else {
+					// console.log("minPadding");
+					matteMargin = 0.5 * (windowWidth - minWidth - 2 * minPadding);
+				}
+			} else {
+				matteMargin = (windowWidth - minWidth) / 4.0;
+				// console.log("splitting padding ");
+			}
+
+
+			$matte.attr("style", "margin: 0 " + matteMargin + "px");
+		}
+
 		function updateImageDimensions() {
 			$("img").not("#download").each(function() {
 				var $obj = $(this);
@@ -357,9 +406,15 @@ if (imagePageLoaded == null) {
 					$obj.attr("originalHeight", height);
 				}
 				
+				var borderThickness = 0;
+				var borderValue = $("body").attr("borderthick");
+				if (borderValue != null) {
+					borderThickness = parseInt(borderValue);
+				}
+
 				var size = useableSize()
-				var windowWidth = size[0];
-				var windowHeight = size[1];
+				var windowWidth = size[0] - 2 * borderThickness;
+				var windowHeight = size[1] - 2 * borderThickness;
 				var newWidth = width;
 				var newHeight = height;
 				var aspectRatio = width / height;
@@ -380,8 +435,10 @@ if (imagePageLoaded == null) {
 				$obj.parent().css("margin-top", vOffset + "px");
 				$obj.parent().css("margin-bottom", vOffset + "px");
 					
-				$(".detail").eq(0).css("width", (windowWidth+"px"));
-				$(".row").eq(1).css("width", (windowWidth+"px"));
+				$(".detail").eq(0).css("width", ((windowWidth + 2 * borderThickness) + "px"));
+				$(".row").eq(1).css("width", ((windowWidth + 2 * borderThickness) + "px"));
+
+				setupMatte();
 
 				if ($obj.attr("srcset") == null && $obj.attr("filename") != null) {
 					$obj.attr("src", null);
@@ -426,7 +483,7 @@ if (imagePageLoaded == null) {
 		$("div.detail").css("padding-top", "0px");
 		updateItems();
 	
-		$("#footer > p,#footer > li").wrapInner('<a href="../../index.html"></a>');
+		$("#footer > p,#footer > li").not("a").wrapInner('<a href="../../index.html"></a>');
 			
 		if ($("td.sideinfo").length == 0 && $("ul#photoInfo").length == 0 && $("div#headerinfo1").length == 0) {
 			$('<style type=\"text/css\">ul:not(#nav) li { list-style: none; display: inline; } ul:not(#nav) li:after { content: " -"; } ul:not(#nav) li:last-child:after { content: none; }</style>').appendTo( "head" );
