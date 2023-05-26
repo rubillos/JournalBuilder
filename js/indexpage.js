@@ -182,9 +182,10 @@ if (indexPageLoaded == null) {
 					else { head_size = "3.0em" }
 					$h1.css("font-size", head_size);
 				}
-				$h1.css("margin", "10px 0 20px");
 			}
+			$("h1").not(".nomargin").css("margin", "10px 0 20px");
 			$(".journaltext").not(".nomodify").css("font-size", "2.2em").css("line-height", "1.2em");
+			$(".picblock").eq(".setfont").css("font-size", "2.2em");
 			$("#footer").not(".nomodify").css("font-size", "3em");
 		}
 		mobileDevice = true;
@@ -414,12 +415,15 @@ if (indexPageLoaded == null) {
 				thumbName = targetName(thumbName);
 				
 				$newVideo.attr("path", thumbName);
-				$dtObj.css({ 'position': 'relative', 'border-color': 'white', 'border-style': 'solid', 'border-width': '5px', 'margin': '-5px '});
+				$dtObj.css({ 'position': 'relative' });
+				if (!$dtObj.hasClass("nomodify")) {
+					$dtObj.css({ 'border-color': 'white', 'border-style': 'solid', 'border-width': '5px', 'margin': '-5px '});
+				}
 				$dtObj.attr("height", $img.attr("height"));
 				$newVideo.appendTo($aObj);
 				
 				if ($playImg == null) {
-					$playImg = $("<img src='"+rootPrefix+"FrontPageGraphics/play.png' width=60 height=60 style='position:absolute; left: 65px; top: 23px'>");
+					$playImg = $("<img src='"+rootPrefix+"play.png' width=60 height=60 style='position:absolute; left: 65px; top: 23px; border-width:0;'>");
 				}
 								
 				$aObj.on("touchstart mouseenter", addPlay);
@@ -441,6 +445,11 @@ if (indexPageLoaded == null) {
 				if (itemInfo.length>standardMovieIndex) {
 					moviePages[itemInfo[pageNumberIndex]] = itemInfo;
 				}
+			}
+
+			var assetRoot = $("body").attr("assetroot");
+			if (assetRoot == null) {
+				assetRoot = "../../FrontPageGraphics/";
 			}
 			
 			$("img").each(function() {
@@ -491,7 +500,7 @@ if (indexPageLoaded == null) {
 							newHTML = newHTML.split("#title").join(title);
 							$captionObj.html(newHTML);
 						}
-						addVideoThumbnail($img, movieInfo, "../../", "");
+						addVideoThumbnail($img, movieInfo, assetRoot, "");
 					}
 				}
 			});
@@ -522,8 +531,8 @@ if (indexPageLoaded == null) {
 		}
 		
 		$("li.pagnation,li.previous,li.next").css("cursor", "pointer").click(handleNavClick);
-		$("li.previous").css("height", "100%");
-		$("li.next").css("height", "100%");
+		$("li.previous").not(".nomodify").css("height", "100%");
+		$("li.next").not(".nomodify").css("height", "100%");
 	
 		$("body").css("display", "inline");
 		
