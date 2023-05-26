@@ -253,6 +253,46 @@ if (moviePageLoaded == null) {
 			}
 		}
 		
+		function setupMatte(minWidth) {
+			var $matte = $("#matte");
+			if ($matte.length == 0) {
+				return false;
+			}
+			
+			var windowWidth = $(window).width();
+			var windowHeight = $(window).height();
+
+			var minPadding = 30;
+			var minMargin = 30;
+			var matteMargin = 30;
+
+			if (minWidth > windowWidth) {
+				matteMargin = 0;
+				// console.log("minWidth > ");
+			} else if ((minWidth + 2 * minPadding + 2 * minMargin < windowWidth) && (minWidth + 0.5 * (windowWidth - minWidth) > 16.0 / 9.0 * windowHeight)) {
+				if (16.0 / 9.0 * windowHeight > minWidth + 2 * minPadding) {
+					// console.log("16.9 ");
+					matteMargin = 0.5 * (windowWidth - 16.0 / 9.0 * windowHeight);
+				} else {
+					// console.log("minPadding");
+					matteMargin = 0.5 * (windowWidth - minWidth - 2 * minPadding);
+				}
+			} else {
+				matteMargin = (windowWidth - minWidth) / 4.0;
+				// console.log("splitting padding ");
+			}
+
+			$matte.attr("style", "margin: 0 " + matteMargin + "px");
+
+			if (minWidth > windowWidth) {
+				$("#photo video").attr("style", "border: 0px");
+			} else {
+				$("#photo video").attr("style", "border: 4px solid");
+			}
+
+			return true;
+		}
+
 		function setupPage(movieRows, pageIndex) {
 			var movieItems = movieRows[pageIndex].split("\t");
 			var pageNumber = parseInt(movieItems[pageNumberIndex], 10);
@@ -385,6 +425,12 @@ if (moviePageLoaded == null) {
 				$nextRef.attr("href", pathWithSearchTerm("large-"+nextPageNumber+".html", searchTerm));
 			}
 			$("#next").hidden(pageNumber==pageCount);
+			
+			if (setupMatte(Number(currentMovieWidth))) {
+				$(window).resize(function () {
+					setupMatte(Number(currentMovieWidth));
+				});
+			}
 				
 			if (typeof pagewrap !== 'undefined' ) {
 				pagewrap.style.width = currentMovieWidth + "px";
@@ -585,7 +631,7 @@ if (moviePageLoaded == null) {
 			$("#previous").attr("title", "Previous (left arrow)");
 			$("#next").attr("title", "Next (spacebar or right arrow)");
 			
-			$("#footer > p, #footer > li").wrapInner('<a href="../../index.html"></a>');
+			$("#footer > p, #footer > li").not("a").wrapInner('<a href="../../index.html"></a>');
 			$(".grow > a, center > a").not(".nomodify").css("background-color","#CCC").css("padding","3px 15px");
 			$("center > a").not(".nomodify").parent().css("margin-top", "12px");
 
