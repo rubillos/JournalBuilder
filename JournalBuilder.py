@@ -308,26 +308,26 @@ def save_versions(image_ref, ref_index, version_data, header_info, image_folders
 				result = -1
 				error_msg = "Error saving: " + output_path + ", " + str(e)
 
-			if result >= 0 and header_info:
-				header_size = (version_data["page_width"], version_data["header_height"])
-				for scale, suffix, index in [ (1, "", 0), (2, "@2x", 1), (3, "@3x", 2)]:
-					output_path = os.path.join(version_data["destination_folder"], header_image_url(header_info[2], suffix=suffix, for_html=False))
-					try:
-						if large_images[index]:
-							source_image = large_images[index]
-						else:
-							source_image = image
-						save_time, scale_time = save_scaled_header(source_image, (header_size[0] * scale, header_size[1] * scale), header_info[1], output_path, sampling, profile)
-						if do_timing:
-							if not "header_save_time" in timing_data:
-								timing_data["header_save_time"] = 0
-								timing_data["header_scale_time"] = 0
-							timing_data["header_save_time"] += save_time
-							timing_data["header_scale_time"] += scale_time
-						result = result + 1 if result >= 0 else result
-					except OSError as e:
-						result = -1
-						error_msg = "Error saving: " + output_path + ", " + str(e)
+		if result >= 0 and header_info:
+			header_size = (version_data["page_width"], version_data["header_height"])
+			for scale, suffix, index in [ (1, "", 0), (2, "@2x", 1), (3, "@3x", 2)]:
+				output_path = os.path.join(version_data["destination_folder"], header_image_url(header_info[2], suffix=suffix, for_html=False))
+				try:
+					if large_images[index]:
+						source_image = large_images[index]
+					else:
+						source_image = image
+					save_time, scale_time = save_scaled_header(source_image, (header_size[0] * scale, header_size[1] * scale), header_info[1], output_path, sampling, profile)
+					if do_timing:
+						if not "header_save_time" in timing_data:
+							timing_data["header_save_time"] = 0
+							timing_data["header_scale_time"] = 0
+						timing_data["header_save_time"] += save_time
+						timing_data["header_scale_time"] += scale_time
+					result = result + 1 if result >= 0 else result
+				except OSError as e:
+					result = -1
+					error_msg = "Error saving: " + output_path + ", " + str(e)
 	else:
 		result = -1
 		error_msg = "Cannot open: " + image_ref["file_path"]
