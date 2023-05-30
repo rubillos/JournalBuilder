@@ -13,6 +13,7 @@
 import sys, os, time, shutil
 import argparse
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from PIL import Image, ImageOps
 from pillow_heif import register_heif_opener, HeifImageFile
 import exifread
@@ -38,7 +39,7 @@ parser.add_argument("-s", "--single", dest="single_thread", help="Run all tasks 
 parser.add_argument("-nc", "--nocache", dest="no_cache", help="Prevent caching of images and links (for debugging)", action="store_true")
 parser.add_argument("-x", "--express", dest="express", help="Express mode - one file per image", action="store_true")
 parser.add_argument("-xx", "--extraexpress", dest="extraexpress", help="Extra Express mode - one file per image, only generate thumbnails", action="store_true")
-parser.add_argument("-o", "--open", dest="open_result", help="Open output journal in browser", action="store_true")
+parser.add_argument("-b", "--browser", dest="open_result", help="Open output journal in browser", action="store_true")
 
 group = parser.add_argument_group("album settings")
 group.add_argument("-db", dest="data_base", help="Path to Photos library (default: system library)", type=str, default=None)
@@ -66,9 +67,11 @@ group.add_argument("-fc", dest="folder_count", help="Maximum number of photo fol
 group.add_argument("-q", dest="jpeg_quality", help="JPEG quality level (default: high)", type=str, choices=["low", "medium", "high", "very_high", "maximum"], default="high")
 group.add_argument("-ljs", "--local_javascript", dest="local_js", help="Use local javascipt folder - default is ../../", action="store_true")
 group.add_argument("-ti", "--top_index", dest="top_index", help="Generate a top level index page, photo captions are paths to sub-journals", action="store_true")
+group.add_argument("-o", "--output", dest="output_journal", help="Generate a new journal.txt file - will rename existing file if present", action="store_true")
 
-group = parser.add_argument_group("template creation")
-group.add_argument("-mt", "--maketemplate", dest="make_template", help="Template start and end dates: YYYY-MM-DD,YYYY-MM-DD", type=str, default=None)
+group = parser.add_mutually_exclusive_group()
+group.add_argument("-mt", "--maketemplate", dest="make_template", help="Template start and end dates: YYYY-MM-DD,YYYY-MM-DD | use -o to generate journal.txt", type=str, default=None)
+group.add_argument("-df", "--diff", dest="do_diff", help="Find differences in current HTML files, use -o generate new journal.txt", action="store_true")
 
 group = parser.add_argument_group("debugging")
 subgroup = group.add_mutually_exclusive_group()
@@ -108,9 +111,19 @@ if args.documentation:
 		console.print(file.read(), end="")
 	quit()
 
+if args.do_diff:
+	args.clean = False
+
 start_time = time.time()
 
 destination_folder = None
+
+if args.folder:
+	destination_folder = args.folder
+	if not os.path.isdir(destination_folder):
+		parser.error("Destination directory not found")
+else:
+	destination_folder = os.getcwd()
 
 previous_external_url = None
 next_external_url = None
@@ -815,25 +828,158 @@ def getFilesFolder(file_paths):
 			if not file_name.startswith('.') and os.path.isfile(file_path):
 				file_paths.append((file_name, file_path, None, None, None, None, None))
 
+def journalPath():
+	global destination_folder
+
+	path = args.journal
+	if not "/" in path:
+		path = os.path.join(destination_folder, path)
+
+	return path
+
+def createNewJournal():
+	path = Path(journalPath())
+
+	if path.exists():
+		did_rename = False
+		stem = path.stem
+		index = 1
+		while index<100 and not did_rename:
+			if index == 1:
+				new_stem = "{} copy".format(stem)
+			else:
+				new_stem = "{} copy {}".format(stem, index)
+			rename_path = path.with_stem(new_stem)
+
+			if not rename_path.exists():
+				try:
+					path.rename(rename_path)
+					did_rename = True
+
+				except OSError as e:
+					print_error("Error renaming: ", path, e)
+
+			index += 1
+			
+		if not did_rename:
+			return None
+
+	try:
+		file = open(path, "w")
+		return file
+
+	except OSError as e:
+		print_error("Error creating: ", path, e)
+
+def findDifferences(text_lines, original_journal):
+	from difflib import SequenceMatcher
+
+	html_lines = []
+	text_portion = ""
+	p_start = "<p>"
+	p_end = "</p>"
+
+	pathlist = sorted(Path(destination_folder).glob('index*.html'))
+	for path in pathlist:
+		with open(path, "r") as file:
+			html_file = file.readlines()
+			extended_line = False
+			for line in html_file:
+				if extended_line:
+					line = line.lstrip()
+					if p_end in line:
+						text_portion += line.split(p_end)[0]
+						html_lines.append(text_portion)
+						extended_line = False
+					else:
+						text_portion += line
+				else:
+					if p_start in line and "journaltext" in line:
+						text_portion = line.split(p_start, 1)[1]
+						if p_end in text_portion:
+							html_lines.append(text_portion.split(p_end)[0])
+						else:
+							extended_line = True
+
+	if len(text_lines) != len(html_lines):
+		parser.error("Find Differences Error: line counts differ - journal:{} vs html:{}".format(len(text_lines)), len(html_lines))
+
+	diff_count = 0
+
+	for line_number, (text_line, html_line) in enumerate(zip(text_lines, html_lines)):
+		if text_line != html_line:
+			matching = SequenceMatcher(None, text_line, html_line).get_matching_blocks()
+
+			for i in range(len(matching)-2):
+				diff_count += 1
+
+				def previous_space(str, start, length):
+					if start > 0 and str[start-1] == " ":
+						start -= 1
+						length += 1
+					index = str.rfind(" ", 0, max(0, start - 1))
+					if index != -1:
+						length += start-index+1
+						start = index
+					return start, length
+
+				def next_space(str, start, length):
+					if start+length+1 < len(str) and str[start+length] == " ":
+						length += 1
+					index = str.find(" ", start+length)
+					if index != -1:
+						length = index - start
+					return start, length
+
+				a0, b0, size0 = matching[i]
+				a1, b1, _ = matching[i+1]
+				a = a0+size0
+				sizea = a1-a
+				b = b0+size0
+				sizeb = b1-b
+
+				while sizea>1 and sizeb>1 and (text_line[a+sizea-1] == html_line[b+sizeb-1]):
+					sizea -= 1
+					sizeb -= 1
+
+				a, sizea = previous_space(text_line, a, sizea)
+				a, sizea = next_space(text_line, a, sizea)
+
+				b, sizeb = previous_space(html_line, b, sizeb)
+				b, sizeb = next_space(html_line, b, sizeb)
+
+				if sizea < 10 or sizeb < 10:
+					a, sizea = previous_space(text_line, a, sizea)
+					a, sizea = next_space(text_line, a, sizea)
+
+					b, sizeb = previous_space(html_line, b, sizeb)
+					b, sizeb = next_space(html_line, b, sizeb)
+
+				original_journal = original_journal.replace(text_line, html_line)
+
+				if diff_count == 1:
+					console.print("HTML files have been modified:")
+				console.print("Line {}: \"...{}...\" changed to \"...{}...\"".format(line_number+1, text_line[a:a+sizea], html_line[b:b+sizeb]))
+		
+	if diff_count > 0 and args.output_journal:
+		console.print("Creating updated journal (any existing file will be renamed)")
+		out_file = createNewJournal()
+		if out_file:
+			out_file.write(original_journal)
+			out_file.close()
+	elif diff_count == 0:
+		console.print("No differences fouund.")
+	
 def main():
 	global console
 	global page_width
 	global nav_width
 	global destination_folder
 
-	if args.folder:
-		destination_folder = args.folder
-		if not os.path.isdir(destination_folder):
-			parser.error("Destination directory not found")
-	else:
-		destination_folder = os.getcwd()
-
 	unplaced_image_refs = []
 
 	# read journal file
-	journal_file_path = args.journal
-	if not "/" in journal_file_path:
-		journal_file_path = os.path.join(destination_folder, journal_file_path)
+	journal_file_path = journalPath()
 	if os.path.isfile(journal_file_path):
 		with open(journal_file_path, "r") as file:
 			journal_src = file.readlines()
@@ -841,6 +987,10 @@ def main():
 		parser.error("journal.txt not found in current directory")
 	else:
 		journal_src = []
+
+	if args.do_diff:
+		original_journal = "".join(journal_src)
+		text_lines = []
 		
 	# scan journal header
 	date_overrides = {}
@@ -856,110 +1006,111 @@ def main():
 	photo_list_start = time.time()
 	file_paths = []
 
-	if args.album_name:
-		getFilesPhotoKit(file_paths)
-	else:
-		getFilesFolder(file_paths)
-			
-	if len(file_paths) == 0:
-		parser.error("No source photos found! Please specify an album name (-a) or an image folder (-i).")
-
-	file_scan_start = time.time()
-	photo_list_time = file_scan_start - photo_list_start
-
-	folder_scales = [1, 2, 3, 4, 6, 8, 12]
-	image_folder_count = 1
-
-	def folder_count_for_size(size):
-		for i, scale in enumerate(folder_scales, 1):
-			if scale * base_image_size >= size:
-				return i
-		return len(folder_scales)
-
-	print_now("Retrieving photo metadata...")
-	for file_name, file_path, title, photo_date, photo_width, photo_height in file_paths:
-		try:
-			with open(file_path, "rb") as image_file:
-				tags = exifread.process_file(image_file, details=False)
-				keys = tags.keys()
-				image_ref = {}
-
-				image_ref["file_name"] = file_name
-				image_ref["file_path"] = file_path
+	if not args.do_diff:
+		if args.album_name:
+			getFilesPhotoKit(file_paths)
+		else:
+			getFilesFolder(file_paths)
 				
-				if file_name in date_overrides:
-					photo_date = date_from_string(date_overrides[file_name])
-				if not photo_date and 'Image DateTime' in tags:
-					photo_date = date_from_string(tags['Image DateTime'].values)
-				if not photo_date:
-					photo_date = datetime.fromtimestamp(os.path.getmtime(file_path))
-					print_error("Warning: Using os date for ", file_name, photo_date)
+		if len(file_paths) == 0:
+			parser.error("No source photos found! Please specify an album name (-a) or an image folder (-i).")
 
-				image_ref["date"] = photo_date
-				image_ref["date_string"] = photo_date.strftime(date_format)
+		file_scan_start = time.time()
+		photo_list_time = file_scan_start - photo_list_start
 
-				if args.reorder_thumbs or args.aspect_as_captions:
-					if photo_width and photo_height:
-						image_size = (photo_width, photo_height)
-					else:
-						image_size = size_of_image_file(image_file)
-					if image_size:
-						aspect_ratio = float(image_size[0]) / float(image_size[1])
-					else:
-						aspect_ratio = 1.0
-					image_ref["aspect"] = aspect_ratio
-					image_ref["tall"] = aspect_ratio < tall_aspect
+		folder_scales = [1, 2, 3, 4, 6, 8, 12]
+		image_folder_count = 1
 
-				if photo_width and photo_height:
-					image_ref["current_size"] = (photo_width, photo_height)
-					folder_count = folder_count_for_size(max(int(photo_width), int(photo_height)))
-				else:
-					folder_count = 3
+		def folder_count_for_size(size):
+			for i, scale in enumerate(folder_scales, 1):
+				if scale * base_image_size >= size:
+					return i
+			return len(folder_scales)
 
-				folder_count = min(args.folder_count, folder_count)
-				image_ref["folder_count"] = folder_count
-				image_folder_count = max(image_folder_count, folder_count)
+		print_now("Retrieving photo metadata...")
+		for file_name, file_path, title, photo_date, photo_width, photo_height in file_paths:
+			try:
+				with open(file_path, "rb") as image_file:
+					tags = exifread.process_file(image_file, details=False)
+					keys = tags.keys()
+					image_ref = {}
 
-				if not title and 'Image ImageDescription' in keys:
-					title = tags['Image ImageDescription'].values
-
-				if title and (title != "default") and not ("DCIM\\" in title) and not ("OLYMPUS DIGITAL CAMERA" in title):
-					image_ref["caption"] = title
-				
-				exif_data = [file_name, image_ref["date_string"]]
-				
-				def format_shutter(speed):
-					if speed <= 0.5:
-						return "1/{:d}s".format(int(1.0 / speed))
-					else:
-						return "{:.1f}s".format(speed)
-
-				def format_ev(bias):
-					if abs(bias) <= 0.1:
-						return "0ev"
-					else:
-						return "{:+.1f}ev".format(bias)
-
-				if 'EXIF ExposureTime' in keys:
-					exif_data.append(format_shutter(float(tags['EXIF ExposureTime'].values[0])))
-				if 'EXIF FNumber' in keys:
-					exif_data.append("ƒ{:.1f}".format(float(tags['EXIF FNumber'].values[0])))
-				if 'EXIF ExposureBiasValue' in keys:
-					exif_data.append(format_ev(float(tags['EXIF ExposureBiasValue'].values[0])))
-				if 'EXIF ISOSpeedRatings' in keys:
-					exif_data.append("ISO {:d}".format(tags['EXIF ISOSpeedRatings'].values[0]))
-				if 'EXIF FocalLengthIn35mmFilm' in keys:
-					exif_data.append("{:d}mm".format(tags['EXIF FocalLengthIn35mmFilm'].values[0]))
-				if 'Image Model' in keys:
-					exif_data.append(tags['Image Model'].values)
+					image_ref["file_name"] = file_name
+					image_ref["file_path"] = file_path
 					
-				image_ref["exif"] = " &bull; ".join(exif_data)
-				unplaced_image_refs.append(image_ref)
-		except OSError as e:
-			print("Error opening file:", file_path, file_name, e)
-	console.print(" done.")
+					if file_name in date_overrides:
+						photo_date = date_from_string(date_overrides[file_name])
+					if not photo_date and 'Image DateTime' in tags:
+						photo_date = date_from_string(tags['Image DateTime'].values)
+					if not photo_date:
+						photo_date = datetime.fromtimestamp(os.path.getmtime(file_path))
+						print_error("Warning: Using os date for ", file_name, photo_date)
 
-	file_scan_time = time.time() - file_scan_start
+					image_ref["date"] = photo_date
+					image_ref["date_string"] = photo_date.strftime(date_format)
+
+					if args.reorder_thumbs or args.aspect_as_captions:
+						if photo_width and photo_height:
+							image_size = (photo_width, photo_height)
+						else:
+							image_size = size_of_image_file(image_file)
+						if image_size:
+							aspect_ratio = float(image_size[0]) / float(image_size[1])
+						else:
+							aspect_ratio = 1.0
+						image_ref["aspect"] = aspect_ratio
+						image_ref["tall"] = aspect_ratio < tall_aspect
+
+					if photo_width and photo_height:
+						image_ref["current_size"] = (photo_width, photo_height)
+						folder_count = folder_count_for_size(max(int(photo_width), int(photo_height)))
+					else:
+						folder_count = 3
+
+					folder_count = min(args.folder_count, folder_count)
+					image_ref["folder_count"] = folder_count
+					image_folder_count = max(image_folder_count, folder_count)
+
+					if not title and 'Image ImageDescription' in keys:
+						title = tags['Image ImageDescription'].values
+
+					if title and (title != "default") and not ("DCIM\\" in title) and not ("OLYMPUS DIGITAL CAMERA" in title):
+						image_ref["caption"] = title
+					
+					exif_data = [file_name, image_ref["date_string"]]
+					
+					def format_shutter(speed):
+						if speed <= 0.5:
+							return "1/{:d}s".format(int(1.0 / speed))
+						else:
+							return "{:.1f}s".format(speed)
+
+					def format_ev(bias):
+						if abs(bias) <= 0.1:
+							return "0ev"
+						else:
+							return "{:+.1f}ev".format(bias)
+
+					if 'EXIF ExposureTime' in keys:
+						exif_data.append(format_shutter(float(tags['EXIF ExposureTime'].values[0])))
+					if 'EXIF FNumber' in keys:
+						exif_data.append("ƒ{:.1f}".format(float(tags['EXIF FNumber'].values[0])))
+					if 'EXIF ExposureBiasValue' in keys:
+						exif_data.append(format_ev(float(tags['EXIF ExposureBiasValue'].values[0])))
+					if 'EXIF ISOSpeedRatings' in keys:
+						exif_data.append("ISO {:d}".format(tags['EXIF ISOSpeedRatings'].values[0]))
+					if 'EXIF FocalLengthIn35mmFilm' in keys:
+						exif_data.append("{:d}mm".format(tags['EXIF FocalLengthIn35mmFilm'].values[0]))
+					if 'Image Model' in keys:
+						exif_data.append(tags['Image Model'].values)
+						
+					image_ref["exif"] = " &bull; ".join(exif_data)
+					unplaced_image_refs.append(image_ref)
+			except OSError as e:
+				print("Error opening file:", file_path, file_name, e)
+		console.print(" done.")
+
+		file_scan_time = time.time() - file_scan_start
 
 	# sort based on date
 	if not args.album_name or args.date_sort:
@@ -1006,7 +1157,7 @@ def main():
 				except:
 					pass
 			
-				if not header_ref:
+				if not header_ref and not args.do_diff:
 					print_error("Warning: Header image not found for page: ", text, tag_parts[0])
 
 			page_headers.append((header_ref, header_offset, index_page_num))
@@ -1016,7 +1167,7 @@ def main():
 			caption_ref = next((image_ref for image_ref in all_image_refs if image_ref["file_name"] == subtag), None)
 			if caption_ref:
 				caption_ref["caption"] = text
-			else:
+			elif not args.do_diff:
 				print_error("Warning: Image for caption not found: ", None, subtag)
 		elif entries is not None:
 			use_last = last_entries is not None and len(entries) == 0
@@ -1033,6 +1184,8 @@ def main():
 					entries.append({ "heading": text })
 			elif tag == "text":
 				entries.append({ "text": text})
+				if args.do_diff:
+					text_lines.append(text)
 			elif tag == "image":
 				tag_parts = subtag.split(",")
 				if len(tag_parts)>=1:
@@ -1088,6 +1241,11 @@ def main():
 				else:
 					print_error("Warning: Invalid movie info: ", None, text)
 	
+	# Find text differences between journal.txt and html files
+	if args.do_diff:
+		findDifferences(text_lines, original_journal)
+		quit()
+
 	if len(pages) == 0 and args.album_name:
 		index_page_num = 1
 		name = args.journal_title if args.journal_title else args.album_name
@@ -1606,6 +1764,11 @@ if __name__ == '__main__':
 				end_date = start_date
 		
 		if start_date and end_date:
+			if args.output_journal:
+				new_journal = createNewJournal()
+				original_stdout = sys.stdout
+				sys.stdout = new_journal
+
 			print("[Site]JournalName")
 			print("[Album]AlbumName")
 			print("[Year]"+str(args.year))
@@ -1625,8 +1788,13 @@ if __name__ == '__main__':
 
 			print()
 			print("[Epilog=HeaderImage.ext,offset]")
+
+			if args.output_journal:
+				new_journal.close()
+				sys.stdout = original_stdout
 		else:
 			parser.error("Template creation requires start date and end date: YYYY-MM-DD,YYYY-MM-DD")
+
 	else:
 		if not args.single_thread:
 			# executor = concurrent.futures.ThreadPoolExecutor()
