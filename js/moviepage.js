@@ -402,7 +402,7 @@ if (moviePageLoaded == null) {
 				default:			heightNumber = "" + currentMovieHeight + "p";	break;
 			}
 			
-			var heightSuffix = " (" + heightNumber + ")";
+			var heightSuffix = " <span style='font-size: 50%;''>(" + heightNumber + ")</span>";
 			
 			if (pageCount > 1) {
 				$("#current").html(pageNumber+" - "+movieItems[pageTitleIndex] + heightSuffix);			
