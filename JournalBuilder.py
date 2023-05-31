@@ -870,6 +870,7 @@ def createNewJournal():
 
 	except OSError as e:
 		print_error("Error creating: ", path, e)
+		return None
 
 def findDifferences(text_lines, original_journal):
 	from difflib import SequenceMatcher
