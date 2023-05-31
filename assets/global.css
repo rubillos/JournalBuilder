@@ -37,7 +37,7 @@ ul#nav .next_text {display: none;}
 
 .imagediv { text-align: center; }
 .imagewrapper { background-color: #EEE; }
-.imagelabel { font-size:12px; color: #636466; line-height:15px; text-align: left; }
+.imagelabel { font-size:12px; color: #636466; line-height:15px; text-align: left; margin-bottom: 0px; }
 .imagecell { margin: 0; padding: 0; text-align: center; background-color:#eee; vertical-align: bottom; }
 
 #footer { padding: 0; margin: 0 15px 15px 15px; list-style: none; }
