@@ -66,6 +66,7 @@ group.add_argument("-ds", "--dont_split", dest="dont_split", help="Don't split p
 group.add_argument("-fc", dest="folder_count", help="Maximum number of photo folders to create.", type=int, default=0)
 group.add_argument("-q", dest="jpeg_quality", help="JPEG quality level (default: high)", type=str, choices=["low", "medium", "high", "very_high", "maximum"], default="high")
 group.add_argument("-ljs", "--local_javascript", dest="local_js", help="Use local javascipt folder - default is ../../", action="store_true")
+group.add_argument("-rjs", "--relative_javascript", dest="relative_js", help="Use relative javascipt folder - default is ../../", action="store_true")
 group.add_argument("-ti", "--top_index", dest="top_index", help="Generate a top level index page, photo captions are paths to sub-journals", action="store_true")
 group.add_argument("-o", "--output", dest="output_journal", help="Generate a new journal.txt file - will rename existing file if present", action="store_true")
 
@@ -1239,6 +1240,8 @@ def main():
 						entries.append({ "Movie": movie_ref })
 						movie_refs.append(movie_ref)
 						unplaced_image_refs.remove(movie_ref)
+					else:
+						print_error("Warning: Missing movie ref for: ", caption, pic_name)
 				else:
 					print_error("Warning: Invalid movie info: ", None, text)
 	
@@ -1557,6 +1560,9 @@ def main():
 				if args.local_js:
 					replace_key(new_detail_lines, "../../", "js/")
 
+				if args.relative_js:
+					replace_key(new_detail_lines, "../../", "../../js/")
+
 				page_title = journal_title + " - " + (image_ref["caption"] if "caption" in image_ref else image_ref["file_name"])
 				
 				replace_key(new_detail_lines, "_PageTitle_", html.escape(page_title))
@@ -1628,6 +1634,9 @@ def main():
 				
 				if args.local_js:
 					replace_key(new_index_lines, "../../", "js/")
+
+				if args.relative_js:
+					replace_key(new_index_lines, "../../", "../../js/")
 
 				page_title = journal_title
 				if page_count > 1:
