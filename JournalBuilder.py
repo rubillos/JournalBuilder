@@ -65,7 +65,6 @@ group.add_argument("-r", "--reorder", dest="reorder_thumbs", help="Re-order thum
 group.add_argument("-ds", "--dont_split", dest="dont_split", help="Don't split photo blocks with multiple text paragraphs", action="store_true")
 group.add_argument("-fc", dest="folder_count", help="Maximum number of photo folders to create.", type=int, default=0)
 group.add_argument("-q", dest="jpeg_quality", help="JPEG quality level (default: high)", type=str, choices=["low", "medium", "high", "very_high", "maximum"], default="high")
-group.add_argument("-ljs", "--local_javascript", dest="local_js", help="Use local javascipt folder - default is ../../", action="store_true")
 group.add_argument("-ti", "--top_index", dest="top_index", help="Generate a top level index page, photo captions are paths to sub-journals", action="store_true")
 group.add_argument("-o", "--output", dest="output_journal", help="Generate a new journal.txt file - will rename existing file if present", action="store_true")
 group.add_argument("-jsp", "--jspath", dest="js_path", help="Path to javascript folder", type=str, default="../..")
@@ -1390,7 +1389,7 @@ def main():
 	if args.assets_path == "assets":
 		folder_list.append("assets")
 
-	if args.local_js:
+	if args.js_path == "js":
 		folder_list.append("js")
 
 	#copy assets folders
@@ -1565,11 +1564,7 @@ def main():
 				else:
 					new_detail_lines = detail_lines.copy()
 					
-				if args.local_js:
-					replace_key(new_detail_lines, "_JSPath_", "js")
-				else:
-					replace_key(new_detail_lines, "_JSPath_", args.js_path)
-
+				replace_key(new_detail_lines, "_JSPath_", args.js_path)
 				replace_key(new_detail_lines, "_AssetsPath_", args.assets_path)
 
 				page_title = journal_title + " - " + (image_ref["caption"] if "caption" in image_ref else image_ref["file_name"])
@@ -1641,11 +1636,7 @@ def main():
 			for page_index, page in enumerate(pages, 1):
 				new_index_lines = index_lines.copy()
 				
-				if args.local_js:
-					replace_key(new_index_lines, "_JSPath_", "js")
-				else:
-					replace_key(new_index_lines, "_JSPath_", args.js_path)
-
+				replace_key(new_index_lines, "_JSPath_", args.js_path)
 				replace_key(new_index_lines, "_AssetsPath_", args.assets_path)
 
 				page_title = journal_title
