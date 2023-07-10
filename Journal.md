@@ -21,6 +21,8 @@ Below is the layout for the journal.txt file
 [Copyright]text                                     ; overrides the default copyright text, same as the --copyright args
 [Copyrighturl]url                                   ; overrides the _CopyrightURL_ optional field, same as the --copyrighturl args
 [Metadesc]url                                       ; overrides the default meta description field, same as the --mestadesc args
+[JSpath]path                                        ; overrides the default path to the javascript folder, same as --jspath args
+[Assetspath]path                                    ; overrides the default path to the assets folder, same as --assetspath args
 </Optional>
 
 [Caption=filename.ext]Caption                       ; Define a caption for an image

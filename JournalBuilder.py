@@ -65,10 +65,10 @@ group.add_argument("-r", "--reorder", dest="reorder_thumbs", help="Re-order thum
 group.add_argument("-ds", "--dont_split", dest="dont_split", help="Don't split photo blocks with multiple text paragraphs", action="store_true")
 group.add_argument("-fc", dest="folder_count", help="Maximum number of photo folders to create.", type=int, default=0)
 group.add_argument("-q", dest="jpeg_quality", help="JPEG quality level (default: high)", type=str, choices=["low", "medium", "high", "very_high", "maximum"], default="high")
-group.add_argument("-ljs", "--local_javascript", dest="local_js", help="Use local javascipt folder - default is ../../", action="store_true")
-group.add_argument("-rjs", "--relative_javascript", dest="relative_js", help="Use relative javascipt folder - default is ../../", action="store_true")
 group.add_argument("-ti", "--top_index", dest="top_index", help="Generate a top level index page, photo captions are paths to sub-journals", action="store_true")
 group.add_argument("-o", "--output", dest="output_journal", help="Generate a new journal.txt file - will rename existing file if present", action="store_true")
+group.add_argument("-jsp", "--jspath", dest="js_path", help="Path to javascript folder", type=str, default="../..")
+group.add_argument("-ap", "--assetspath", dest="assets_path", help="Path to assets folder", type=str, default="assets")
 
 group = parser.add_mutually_exclusive_group()
 group.add_argument("-mt", "--maketemplate", dest="make_template", help="Template start and end dates: YYYY-MM-DD,YYYY-MM-DD | use -o to generate journal.txt", type=str, default=None)
@@ -770,6 +770,10 @@ def scan_header(journal, date_overrides):
 				args.metadesc = text
 			case("copyrighturl"):
 				args.copyright_url = text
+			case("assetspath"):
+				args.assets_path = text
+			case("jspath"):
+				args.js_path = text
 
 def getFilesPhotoKit(file_paths):
 	import urllib.parse
@@ -1381,8 +1385,11 @@ def main():
 		else:
 			console.print(" done.")
 
-	folder_list = [ "assets" ]
-	if args.local_js:
+	folder_list = []
+	if args.assets_path == "assets":
+		folder_list.append("assets")
+
+	if args.js_path == "js":
 		folder_list.append("js")
 
 	#copy assets folders
@@ -1557,11 +1564,8 @@ def main():
 				else:
 					new_detail_lines = detail_lines.copy()
 					
-				if args.local_js:
-					replace_key(new_detail_lines, "../../", "js/")
-
-				if args.relative_js:
-					replace_key(new_detail_lines, "../../", "../../js/")
+				replace_key(new_detail_lines, "_JSPath_", args.js_path)
+				replace_key(new_detail_lines, "_AssetsPath_", args.assets_path)
 
 				page_title = journal_title + " - " + (image_ref["caption"] if "caption" in image_ref else image_ref["file_name"])
 				
@@ -1632,11 +1636,8 @@ def main():
 			for page_index, page in enumerate(pages, 1):
 				new_index_lines = index_lines.copy()
 				
-				if args.local_js:
-					replace_key(new_index_lines, "../../", "js/")
-
-				if args.relative_js:
-					replace_key(new_index_lines, "../../", "../../js/")
+				replace_key(new_index_lines, "_JSPath_", args.js_path)
+				replace_key(new_index_lines, "_AssetsPath_", args.assets_path)
 
 				page_title = journal_title
 				if page_count > 1:
