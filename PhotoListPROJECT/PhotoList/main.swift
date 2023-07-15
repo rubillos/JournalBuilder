@@ -9,6 +9,7 @@ import Foundation
 import ArgumentParser
 import Photos
 import UniformTypeIdentifiers
+import OSLog
 
 struct ListPhotos: ParsableCommand {
 	@Argument(help: "Name of album") var albumName: String
@@ -31,7 +32,7 @@ struct ListPhotos: ParsableCommand {
 
 			let fileManager = FileManager.default
 			
-			photoAssets.enumerateObjects{(asset, _, _) in
+			photoAssets.enumerateObjects { (asset, _, _) in
 				
 				if asset.mediaType == .image && !asset.isHidden {
 					let resources = PHAssetResource.assetResources(for: asset)
@@ -46,46 +47,58 @@ struct ListPhotos: ParsableCommand {
 						let dateString = dateFormatter.string(from: modDate)
 						filepath = filepath + dateString
 					}
-
+					 
 					if (asset.isFavorite || !favorites) {
-						if (!fileManager.fileExists(atPath: filepath)) {
-							let directoryURL = URL(fileURLWithPath: filepath)
-							do {
-								try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
-
-								imageManager.requestImageDataAndOrientation(for: asset, options: imageRequestOptions) { data, uti, orientation, info in
-									
-									if let imageData = data, let uti = uti {
-										if let ext = UTType(uti)?.preferredFilenameExtension {
-											filepath = filepath + "/" + "image." + ext
-										} else {
-											filepath = filepath + "/" + "image"
-										}
-										
-										let fileURL = URL(fileURLWithPath: filepath)
-										do {
-											// Write the image data to the file
-											try imageData.write(to: fileURL, options: .atomic)
-										} catch {
-											// Handle error
-											return
-										}
-									}
-								}
-							} catch {
-								// Handle error
-								return
-							}
-						} else {
+					 
+						let needDirectory = !fileManager.fileExists(atPath: filepath)
+						var needFile = true
+					 
+						if (!needDirectory) {
 							do {
 								let items = try fileManager.contentsOfDirectory(atPath: filepath)
-								
-								if let file = items.first {
+								if let file = items.first(where: { name in name.starts(with: "image") }) {
 									filepath = filepath + "/" + file
+									needFile = false
+									Logger().log("found \(resources[0].originalFilename, privacy: .public) at \(URL(fileURLWithPath: filepath), privacy: .public)")
 								}
-							} catch {
-								// Handle error
+							}
+							catch {
+								Logger().log("failed to get contents of directory for \(resources[0].originalFilename, privacy: .public)")
 								return
+							}
+						}
+					 
+						if (needFile) {
+							if (needDirectory) {
+								let directoryURL = URL(fileURLWithPath: filepath)
+								do {
+									try fileManager.createDirectory(at: directoryURL, withIntermediateDirectories: true)
+								} catch {
+									Logger().log("failed to create directory for \(resources[0].originalFilename, privacy: .public)")
+									return
+								}
+							}
+						 
+							imageManager.requestImageDataAndOrientation(for: asset, options: imageRequestOptions) { data, uti, orientation, info in
+							 
+								if let imageData = data, let uti = uti {
+									if let ext = UTType(uti)?.preferredFilenameExtension {
+										filepath = filepath + "/" + "image." + ext
+									} else {
+										filepath = filepath + "/" + "image"
+									}
+								 
+									let fileURL = URL(fileURLWithPath: filepath)
+									do {
+										// Write the image data to the file
+										try imageData.write(to: fileURL, options: .atomic)
+										Logger().log("writing image for \(resources[0].originalFilename, privacy: .public) at \(URL(fileURLWithPath: filepath), privacy: .public)")
+									} catch {
+										// Handle error
+										Logger().log("failed to write image for \(resources[0].originalFilename, privacy: .public)")
+										return
+									}
+								}
 							}
 						}
 					}
@@ -98,7 +111,7 @@ struct ListPhotos: ParsableCommand {
 					if let title = asset.value(forKey: "title") as? String {
 						print(title, terminator: separator)
 					} else {
-					  print("", terminator: separator)
+						print("", terminator: separator)
 					}
 					print(asset.isFavorite)
 				}
