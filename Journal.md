@@ -25,6 +25,10 @@ Below is the layout for the journal.txt file
 [Assetspath]path                                    ; overrides the default path to the assets folder, same as --assetspath args
 </Optional>
 
+[Timezone]±HHMM                                     ; Sets the timezone for the following sections / photos. Used to compare the Journal header
+                                                    ; and Timestamp tags with UTC, and to correct the exif display of photo times from UTC. Can have
+                                                    ; more than one per journal.  Defaults to -0700.
+
 [Caption=filename.ext]Caption                       ; Define a caption for an image
 [Date=filename.ext]2020-08-19 14:06:55              ; Override the date for an image
 
