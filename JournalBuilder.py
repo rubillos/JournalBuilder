@@ -61,7 +61,9 @@ group.add_argument("-is", dest="image_size", help="Base image size (default: 102
 group.add_argument("-hh", dest="header_height", help="Header height (default: 250)", type=int, default=250)
 group.add_argument("-ta", dest="tall_aspect", help="Tall aspect ratio threshold (default: 1.15)", type=float, default=1.15)
 group.add_argument("-y", dest="year", help="copyright year (default: current year)", default=datetime.today().year)
-group.add_argument("-r", "--reorder", dest="reorder_thumbs", help="Re-order thumbs to minimize page height", action="store_true")
+subgroup = group.add_mutually_exclusive_group()
+subgroup.add_argument("-r", "--reorder", dest="reorder_thumbs", help="Re-order thumbs to minimize page height", action="store_true")
+subgroup.add_argument("-dr", "--dont_reorder", dest="dont_reorder_thumbs", help="Do not reorder thumbs to minimize page height", action="store_true")
 group.add_argument("-ds", "--dont_split", dest="dont_split", help="Don't split photo blocks with multiple text paragraphs", action="store_true")
 group.add_argument("-fc", dest="folder_count", help="Maximum number of photo folders to create.", type=int, default=0)
 group.add_argument("-q", dest="jpeg_quality", help="JPEG quality level (default: high)", type=str, choices=["low", "medium", "high", "very_high", "maximum"], default="high")
@@ -763,7 +765,8 @@ def scan_header(journal, date_overrides):
 				args.favorites = albumFavoritesOnly
 				args.open_result = True
 				args.clean = True
-				args.reorder_thumbs = True
+				if not args.dont_reorder_thumbs:
+					args.reorder_thumbs = True
 			case("year"):
 				args.year = int(text)
 			case("test"):
@@ -777,6 +780,9 @@ def scan_header(journal, date_overrides):
 					args.date_sort = True
 				if 'topindex' in flag_parts:
 					args.top_index = True
+				if 'dontreorder' in flag_parts:
+					args.dont_reorder_thumbs = True
+					args.reorder_thumbs = False
 			case("copyright"):
 				args.copyright = text
 			case("metadesc"):

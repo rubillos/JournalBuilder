@@ -16,8 +16,9 @@ Below is the layout for the journal.txt file
 [Value=tall_aspect]1.15                             ; Tall aspect ratio threshold
 [Previous]previous.html                             ; URL of previous site
 [Next]next.html                                     ; URL of next site
-[Flags]<opt all>,<opt datesort>,<opt topindex>      ; all: override favorites only, datesort: override album sort, topindex: don't generate images
-                                                    ; and pages, treat caption as links. Format is 'Name [Optional Link Name]' with space to _
+[Flags]<opt all>,<opt datesort>,<opt topindex>,     ; all: override favorites only, datesort: override album sort, topindex: don't generate images
+       <opt dontreorder>                            ; and pages, treat caption as links. Format is 'Name [Optional Link Name]' with space to _,
+                                                    ; dontreorder: suppress reordering thumbs
 [Copyright]text                                     ; overrides the default copyright text, same as the --copyright args
 [Copyrighturl]url                                   ; overrides the _CopyrightURL_ optional field, same as the --copyrighturl args
 [Metadesc]url                                       ; overrides the default meta description field, same as the --mestadesc args
