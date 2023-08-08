@@ -61,7 +61,9 @@ group.add_argument("-is", dest="image_size", help="Base image size (default: 102
 group.add_argument("-hh", dest="header_height", help="Header height (default: 250)", type=int, default=250)
 group.add_argument("-ta", dest="tall_aspect", help="Tall aspect ratio threshold (default: 1.15)", type=float, default=1.15)
 group.add_argument("-y", dest="year", help="copyright year (default: current year)", default=datetime.today().year)
-group.add_argument("-r", "--reorder", dest="reorder_thumbs", help="Re-order thumbs to minimize page height", action="store_true")
+subgroup = group.add_mutually_exclusive_group()
+subgroup.add_argument("-r", "--reorder", dest="reorder_thumbs", help="Re-order thumbs to minimize page height", action="store_true")
+subgroup.add_argument("-dr", "--dont_reorder", dest="dont_reorder_thumbs", help="Do not reorder thumbs to minimize page height", action="store_true")
 group.add_argument("-ds", "--dont_split", dest="dont_split", help="Don't split photo blocks with multiple text paragraphs", action="store_true")
 group.add_argument("-fc", dest="folder_count", help="Maximum number of photo folders to create.", type=int, default=0)
 group.add_argument("-q", dest="jpeg_quality", help="JPEG quality level (default: high)", type=str, choices=["low", "medium", "high", "very_high", "maximum"], default="high")
@@ -78,6 +80,7 @@ group = parser.add_argument_group("debugging")
 subgroup = group.add_mutually_exclusive_group()
 subgroup.add_argument("-dc", "--datecaption", dest="dates_as_captions", help="Use dates as thumbnail captions", action="store_true")
 subgroup.add_argument("-ac", "--aspectcaption", dest="aspect_as_captions", help="Use aspect ratios as thumbnail captions", action="store_true")
+group.add_argument("-v", "--verbose", dest="verbose_logging", help="Log journal parsing steps", action="store_true")
 
 args = parser.parse_args()
 
@@ -391,14 +394,14 @@ def get_next_line(srcLines):
 	
 	return (tag, subtag, text)
 
-def date_from_string(date_string):
+def date_from_string(date_string, tz=timezone(timedelta(hours=-7))):
 	if len(date_string)>0:
 		for format in date_formats:			
 			try:
 				date_time = datetime.strptime(date_string, format)
 				if "%H" not in format:
 					date_time = date_time.replace(hour=1, minute=1)
-				date_time = date_time.replace(tzinfo=timezone(timedelta(days=-1, seconds=61200)))
+				date_time = date_time.replace(tzinfo=tz)
 				return date_time
 			except:
 				pass	
@@ -583,10 +586,14 @@ def make_photo_block(photo_lines, image_refs):
 
 	return photo_lines
 
-def add_images_before_date(refs, before_date, dest_list, index_page_num):
+def add_images_before_date(refs, before_date, dest_list, index_page_num, timezone):
+	if args.verbose_logging:
+		print_error("add images before date: ", None, before_date)
 	if len(refs):
 		if before_date:
 			new_refs = []
+			if args.verbose_logging:
+				print_error("  checking date: ", refs[0]["date"], refs[0]["file_name"])
 			while len(refs) > 0 and refs[0]["date"] < before_date:
 				ref = refs.pop(0)
 				new_refs.append(ref)
@@ -597,9 +604,14 @@ def add_images_before_date(refs, before_date, dest_list, index_page_num):
 		if len(new_refs) > 0:
 			for ref in new_refs:
 				ref["index_page_num"] = index_page_num
+				ref["timezone"] = timezone
+				if args.verbose_logging:
+					print_error("  adding ref: ", None, ref["file_name"])
 			dest_list.append({"photos": new_refs})
 
-def add_images_before_ref_name(refs, before_ref_name, dest_list, index_page_num):
+def add_images_before_ref_name(refs, before_ref_name, dest_list, index_page_num, timezone):
+	if args.verbose_logging:
+		print_error("add images before file: ", None, before_ref_name)
 	if len(refs):
 		new_refs = []
 		while len(refs) > 0 and refs[0]["file_name"] != before_ref_name:
@@ -609,6 +621,9 @@ def add_images_before_ref_name(refs, before_ref_name, dest_list, index_page_num)
 		if len(new_refs) > 0:
 			for ref in new_refs:
 				ref["index_page_num"] = index_page_num
+				ref["timezone"] = timezone
+				if args.verbose_logging:
+					print_error("  adding ref: ", None, ref["file_name"])
 			dest_list.append({"photos": new_refs})
 
 def rearrange(pages):
@@ -750,7 +765,8 @@ def scan_header(journal, date_overrides):
 				args.favorites = albumFavoritesOnly
 				args.open_result = True
 				args.clean = True
-				args.reorder_thumbs = True
+				if not args.dont_reorder_thumbs:
+					args.reorder_thumbs = True
 			case("year"):
 				args.year = int(text)
 			case("test"):
@@ -764,6 +780,9 @@ def scan_header(journal, date_overrides):
 					args.date_sort = True
 				if 'topindex' in flag_parts:
 					args.top_index = True
+				if 'dontreorder' in flag_parts:
+					args.dont_reorder_thumbs = True
+					args.reorder_thumbs = False
 			case("copyright"):
 				args.copyright = text
 			case("metadesc"):
@@ -784,7 +803,10 @@ def getFilesPhotoKit(file_paths):
 		if len(parts) == 7:
 			original_name = parts[0]
 			file_path = urllib.parse.unquote(parts[1].removeprefix("file://"))
-			file_date = date_from_string(parts[2].removesuffix(" +0000"))
+			file_date = date_from_string(parts[2].removesuffix(" +0000"), timezone.utc)
+			if args.verbose_logging:
+				print_error("Warning: stringToParts ingesting ", original_name, file_date)
+
 			photo_width = parts[3]
 			photo_height = parts[4]
 			title = parts[5]
@@ -1044,6 +1066,7 @@ def main():
 					image_ref["file_name"] = file_name
 					image_ref["file_path"] = file_path
 					
+					#tdc handle timezone in these cases since it isn't utc in the file or override
 					if file_name in date_overrides:
 						photo_date = date_from_string(date_overrides[file_name])
 					if not photo_date and 'Image DateTime' in tags:
@@ -1083,8 +1106,8 @@ def main():
 					if title and (title != "default") and not ("DCIM\\" in title) and not ("OLYMPUS DIGITAL CAMERA" in title):
 						image_ref["caption"] = title
 					
-					exif_data = [file_name, image_ref["date_string"]]
-					
+					exif_data = []
+
 					def format_shutter(speed):
 						if speed <= 0.5:
 							return "1/{:d}s".format(int(1.0 / speed))
@@ -1130,6 +1153,7 @@ def main():
 	last_entries = None
 	movie_refs = []
 	index_page_num = 0
+	currentTimezone = timezone(timedelta(hours=-7))
 
 	journal_scan_start = time.time()
 
@@ -1150,7 +1174,9 @@ def main():
 			entries = []
 			if tag == "epilog":
 				text = "Epilog"
-				add_images_before_date(unplaced_image_refs, None, last_entries if last_entries is not None else entries, index_page_num-1)
+				add_images_before_date(unplaced_image_refs, None, last_entries if last_entries is not None else entries, index_page_num-1, currentTimezone)
+			if args.verbose_logging:
+				print_error("add: ", tag, text)
 			page = { "entries": entries }
 			tag_parts = subtag.split(",")
 			header_ref = None
@@ -1175,20 +1201,28 @@ def main():
 				caption_ref["caption"] = text
 			elif not args.do_diff:
 				print_error("Warning: Image for caption not found: ", None, subtag)
+		elif tag == "timezone":
+			currentTimezone = datetime.strptime(subtag, "%z").tzinfo
+			if args.verbose_logging:
+				print_error("add timezone: ", subtag, currentTimezone)
 		elif entries is not None:
 			use_last = last_entries is not None and len(entries) == 0
 			entries_to_use = last_entries if use_last else entries
 			index_to_use = index_page_num-1 if use_last else index_page_num
 			if tag == "heading" or tag == "timestamp":
 				if "." in subtag:
-					add_images_before_ref_name(unplaced_image_refs, subtag, entries_to_use, index_to_use)
+					add_images_before_ref_name(unplaced_image_refs, subtag, entries_to_use, index_to_use, currentTimezone)
 				else:
-					date = date_from_string(subtag)
+					date = date_from_string(subtag, currentTimezone)
 					if date:
-						add_images_before_date(unplaced_image_refs, date, entries_to_use, index_to_use)
+						add_images_before_date(unplaced_image_refs, date, entries_to_use, index_to_use, currentTimezone)
 				if tag == "heading":
 					entries.append({ "heading": text })
+					if args.verbose_logging:
+						print_error("add: heading", None, text)
 			elif tag == "text":
+				if args.verbose_logging:
+					print_error("add: text", None, text)
 				entries.append({ "text": text})
 				if args.do_diff:
 					text_lines.append(text)
@@ -1265,7 +1299,7 @@ def main():
 		page_names.append(name)
 
 	if entries is not None:
-		add_images_before_date(unplaced_image_refs, None, entries, index_page_num)
+		add_images_before_date(unplaced_image_refs, None, entries, index_page_num, currentTimezone)
 	
 	# merge movie entries
 	last_photos = None
@@ -1587,7 +1621,11 @@ def main():
 
 				replace_key(new_detail_lines, "_SourceCount_", str(image_ref["folder_count"]))
 			
-				exif_text = image_ref["exif"]
+				local_date = image_ref["date"]
+				if "timezone" in image_ref:
+					local_date = local_date.astimezone(image_ref["timezone"])
+				exif = [image_ref["file_name"], local_date.strftime(date_format), image_ref["exif"]]
+				exif_text = " &bull; ".join(exif)
 				if "caption" in image_ref:
 					exif_text += "<br>{}".format(image_ref["caption"])
 				replace_key(new_detail_lines, "_EXIF_", exif_text)
