@@ -131,6 +131,7 @@ else:
 
 previous_external_url = None
 next_external_url = None
+force_nav = False
 
 thumb_size = args.thumb_size
 base_image_size = args.image_size
@@ -734,6 +735,7 @@ def rearrange(pages):
 def scan_header(journal, date_overrides):
 	global previous_external_url
 	global next_external_url
+	global force_nav
 	global thumb_size
 	global base_image_size
 	global header_height
@@ -758,8 +760,10 @@ def scan_header(journal, date_overrides):
 							tall_aspect = float(text)
 			case("previous"):
 				previous_external_url = text
+				force_nav = True
 			case("next"):
 				next_external_url = text
+				force_nav = True
 			case ("album") if not args.album_name:
 				args.album_name = text
 				args.favorites = albumFavoritesOnly
@@ -1685,7 +1689,7 @@ def main():
 				replace_key(new_index_lines, "_MetaDesc_", html.escape(args.metadesc))
 				replace_key(new_index_lines, "_SiteHeading_", html.escape(journal_title))
 				
-				if page_count == 1:
+				if page_count == 1 and not force_nav:
 					extract_section(new_index_lines, "prevnext", "endprevnext")
 				else:
 					remove_tags(new_index_lines, "prevnext", "endprevnext")
@@ -1734,7 +1738,7 @@ def main():
 						
 				insert_array_into_array(new_lines, new_index_lines, text_index)
 					
-				if page_count > 1:
+				if page_count > 1 or force_nav:
 					insert_array_into_array(make_nav_bar(nav_lines.copy(), page_index), new_index_lines, nav_index)
 			
 				if page_headers[page_index-1][0]:
