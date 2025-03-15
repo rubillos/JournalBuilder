@@ -273,7 +273,8 @@ if (indexPageLoaded == null) {
 					}
 					let srcSet = `${encodedName} ${width}w`;
 					for (let i = 2; i <= sizes; i++) {
-						srcSet += `, ${encodedName.replace('.', `@${folder_scales[i-1]}x.`)} ${width*i}w`;
+						let scale = folder_scales[i-1];
+						srcSet += `, ${encodedName.replace('.', `@${scale}x.`)} ${width*scale}w`;
 					}
 					$img.attr("srcset", srcSet);
 					$img.attr("filename", null);
@@ -288,10 +289,10 @@ if (indexPageLoaded == null) {
 							width = 200;
 						}
 						let srcSet = `thumbnails/${encodedName} ${width}w, thumbnails@2x/${encodedName} ${width*2}w, thumbnails@3x/${encodedName} ${width*3}w`;
-						if (pageScale > 1.5) {
+						if (pageScale > 3) {
 							const picName = encodedName.replace("thumb", "picture");
 							srcSet = `${srcSet}, pictures/${picName} 1024w`;
-							if (pageScale > 2.5) {
+							if (pageScale > 6) {
 								srcSet = `${srcSet}, pictures@2x/${picName} 2048w`;
 							}
 						}
