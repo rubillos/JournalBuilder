@@ -595,6 +595,15 @@ if (imagePageLoaded == null) {
 			return str.split(search).join(replace)
 		}
 
+		var waitTimer = null;
+
+		function cancelWaitTimer() {
+			if (waitTimer != null) {
+				clearTimeout(waitTimer);
+				waitTimer = null;
+			}
+		}
+
 		function switchToRef(hRef, canDoLocal) {
 			if (canDoLocal && window.history && history.pushState) {
 				if (!imageSwitchInProgress) {
@@ -649,6 +658,7 @@ if (imagePageLoaded == null) {
 									if (setFileName) {
 										$destImg.attr("filename", srcFileName);
 									}
+									cancelWaitTimer();
 									removeWait();
 									updateImageDimensions();
 									imageSwitchInProgress = false;
@@ -663,10 +673,16 @@ if (imagePageLoaded == null) {
 								if (srcsetRef != null && srcsetRef.length > 0) {
 									tempImage.srcset = srcsetRef;
 								}
+								
 								if (!tempImage.complete) {
-									showWait($destImg.parent());
+									waitTimer = setTimeout(() => {
+										if (!tempImage.complete) {
+											showWait($destImg.parent());
+										}
+										waitTimer = null;
+									}, 20);
 								}
-							
+															
 								moveElement($newBody, $body, "#previous");
 								moveElement($newBody, $body, "#next");
 								moveElement($newBody, $body, "#current");
