@@ -33,6 +33,8 @@ if (indexPageLoaded == null) {
 	var videoElements = [];
 	var maxZoom = 120;
 	var isLocal = false;
+
+	var margins = (screenWidth < 700) ? 40 : 80;
 	
 	if (window.visualViewport != null) {
 		if (window.visualViewport.width < 500) {
@@ -48,7 +50,7 @@ if (indexPageLoaded == null) {
 	}
 	
 	if ((screenWidth < contentWidth) && ($('head > meta[name="viewport"]').length == 0)) {
-		$('head').append('<meta name="viewport" content="width='+(contentWidth+40)+'">');
+		$('head').append('<meta name="viewport" content="width='+(contentWidth+margins)+'">');
 	}
 	else {
 		if (document.location.href.includes("Users/mediaserver") && $(window).width()>(contentWidth+100) && $(".sideinfo").length==0) {
@@ -64,8 +66,8 @@ if (indexPageLoaded == null) {
 	}
 	
 	function updateZoom() {
-		if (contentWidth+40 > window.innerWidth) {
-			var zoom = Math.max(50, window.innerWidth / (contentWidth + 40) * 100);
+		if (contentWidth+margins > window.innerWidth) {
+			var zoom = Math.max(50, window.innerWidth / (contentWidth + margins) * 100);
 			$('body').css("zoom", zoom+"%");
 		}
 		else if ($('body').css("zoom") != null) {
@@ -76,7 +78,7 @@ if (indexPageLoaded == null) {
 				currentZoom *= 100.0;
 			}
 			
-			var zoomScale = window.innerWidth / (contentWidth + 40);
+			var zoomScale = window.innerWidth / (contentWidth + margins);
 			var newZoom = Math.min(maxZoom, currentZoom * zoomScale);
 			
 			$('body').css("zoom", newZoom+"%");
@@ -177,7 +179,7 @@ if (indexPageLoaded == null) {
 				var head_len = $h1.html().length;
 				if (head_len < 50) {
 					var head_size = "";
-					if (head_len > 40) { head_size = "2.5em" }
+					if (head_len > margins) { head_size = "2.5em" }
 					else if (head_len > 30) { head_size = "2.7em" }
 					else { head_size = "3.0em" }
 					$h1.css("font-size", head_size);
@@ -232,6 +234,8 @@ if (indexPageLoaded == null) {
 			$('body').css("zoom", zoom+"%");
 		}
 		
+		const pageScale = (window.outerWidth / window.innerWidth) * window.devicePixelRatio;
+		
 		$("img").each(function() {
 			var $img = $(this);
 			
@@ -240,9 +244,24 @@ if (indexPageLoaded == null) {
 				var parts = filename.split('?')
 				parts[0] = encodeURIComponent(parts[0]);
 				var encodedName = parts.join('?')
+				let width = this.width;
 				
-				if (filename.indexOf("Placed Image")==0) {
-					$img.attr("srcset", encodedName + " 1x, " + encodedName.replace('.', '@2x.') + " 2x, " + encodedName.replace('.', '@3x.') + " 3x");
+				if (filename.indexOf("Placed Image")==0 || filename.indexOf("headers")==0) {
+					if (filename.indexOf("headers") == 0) {
+						encodedName = filename;
+					}
+					let sizes = 3;
+					if ($img.attr("sizes") != null) {
+						sizes = parseInt($img.attr("sizes"));
+					}
+					if (width == 0) {
+						width = 800;
+					}
+					let srcSet = `${encodedName} ${width}w`;
+					for (let i = 2; i <= sizes; i++) {
+						srcSet += `, ${encodedName.replace('.', `@${i}x.`)} ${width*i}w`;
+					}
+					$img.attr("srcset", srcSet);
 					$img.attr("filename", null);
 					$img.attr("src", null);
 				}
@@ -251,7 +270,18 @@ if (indexPageLoaded == null) {
 						$img.attr("src", "thumbnails/" + encodedName);
 					}
 					else {
-						$img.attr("srcset", "thumbnails/" + encodedName + " 1x, thumbnails@2x/" + encodedName + " 2x, thumbnails@3x/" + encodedName + " 3x");
+						if (width == 0) {
+							width = 200;
+						}
+						let srcSet = `thumbnails/${encodedName} ${width}w, thumbnails@2x/${encodedName} ${width*2}w, thumbnails@3x/${encodedName} ${width*3}w`;
+						if (pageScale > 1.5) {
+							const picName = encodedName.replace("thumb", "picture");
+							srcSet = `${srcSet}, pictures/${picName} 1024w`;
+							if (pageScale > 2.5) {
+								srcSet = `${srcSet}, pictures@2x/${picName} 2048w`;
+							}
+						}
+						$img.attr("srcset", srcSet);
 						$img.attr("src", null);
 					}
 				}
@@ -621,6 +651,7 @@ if (indexPageLoaded == null) {
 			switch (event.which) {
 				case 33:	/* page up */
 				case 37:	/* left */
+				case 38:	/* up */
 					if (newPageNumber>1) {
 						newPageNumber--;
 					}
@@ -630,6 +661,7 @@ if (indexPageLoaded == null) {
 					break;
 				case 34:	/* page down */
 				case 39:	/* right */
+				case 40: 	/* down */
 					if (newPageNumber<pageCount) {
 						newPageNumber++;
 					}
@@ -657,8 +689,9 @@ if (indexPageLoaded == null) {
 					break;
 				case 66:	/* stop-start, B */
 				case 80:	/* p */
+				case 9: 	/* tab */
 					if (!event.altKey && !event.shiftKey && !event.ctrlKey) {
-						var $photos = $(".imagecell > a, .imagediv > a");
+						var $photos = $(".imagecell > a, .imagediv > a, .imagediv > > a");
 						
 						if ($photos.length > 0) {
 							document.location.href = $photos.attr('href');
