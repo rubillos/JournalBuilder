@@ -118,7 +118,7 @@ if (imagePageLoaded == null) {
 					const regex = /pictures@([^\/]*)\//;
 					const match = curSrc.match(regex);
 					if (match) {
-						$("#metadata > strong").each(function(){
+						$("#metadata > strong,#metadata > li > strong").last().each(function(){
 							const children = this.childNodes;
 							if (children.length > 0) {
 								const last = children[children.length - 1];
