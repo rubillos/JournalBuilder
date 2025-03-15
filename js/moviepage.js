@@ -32,20 +32,22 @@ if (moviePageLoaded == null) {
 		var useAWS = false;
 			
 		function targetName(objectName) {
-			var href = document.location.href;
-			var domains = ["rickandrandy.com", "randyandrick.com", "ubillos.com", "portlandave.com", "randyubillos.com", "rickfath.com"];
-			var matched = false;
-			
-			for (var i = 0; !matched && i<domains.length; i++) {
-				matched = href.contains(domains[i]);
-			}
-			if (matched) {
-				var elements = document.location.pathname.split("/");
+			if (prefixAWS != "") {
+				var href = document.location.href;
+				var domains = ["rickandrandy.com", "randyandrick.com", "ubillos.com", "portlandave.com", "randyubillos.com", "rickfath.com"];
+				var matched = false;
 				
-				elements[0] = prefixAWS;
-				elements[elements.length-1] = objectName;
-				
-				objectName = elements.join("/");
+				for (var i = 0; !matched && i<domains.length; i++) {
+					matched = href.contains(domains[i]);
+				}
+				if (matched) {
+					var elements = document.location.pathname.split("/");
+					
+					elements[0] = prefixAWS;
+					elements[elements.length-1] = objectName;
+					
+					objectName = elements.join("/");
+				}
 			}
 			
 			return objectName;
@@ -301,6 +303,7 @@ if (moviePageLoaded == null) {
 			var loading4K = false;
 			var smallMovie = false;
 			var movieInfo;
+			var bigScreen = window.screen.width * window.devicePixelRatio >= 2500;
 			var has4K = movieItems.length>fourKMovieIndex && movieItems[fourKMovieIndex].length > 0;
 			var hasHD = movieItems.length>HDMovieIndex && movieItems[HDMovieIndex].length > 0;
 			var hasSmall =  movieItems.length>smallMovieIndex && movieItems[smallMovieIndex].length > 0;
@@ -316,7 +319,7 @@ if (moviePageLoaded == null) {
 				movieInfo = movieItems[standardMovieIndex];
 				smallMovie = true;
 				loadingHD = true;
-			} else if (requesting4K && has4K) {
+			} else if (has4K && (requesting4K || bigScreen)) {
 				movieInfo = movieItems[fourKMovieIndex];
 				loading4K = true;
 			} else if (requestingHD || requesting4K) {
@@ -365,7 +368,7 @@ if (moviePageLoaded == null) {
 					prefix = "index" + ((pageNumber>1) ? pageNumber : "");
 				}
 				
-				if (has4K && !requesting4K) {
+				if (has4K && !loading4K) {
 					$4kprompt.attr("href", prefix+".html?4K");
 				}
 				else {
@@ -687,12 +690,19 @@ if (moviePageLoaded == null) {
 					var handled = true;
 					
 					switch (event.which) {
+						case 9: 	/* tab */
+							if (!fullscreenActive()) {
+								toggleFullscreen();
+								break;
+							}
+							// fall into next case
 						case 66:	/* stop-start, B */
 						case 32:	/* spacebar */
 							togglePlayback(movieElement);
 							break;
 						case 33:	/* page up */
 						case 37:	/* left */
+						case 38:	/* up */
 							if (event.altKey) {
 								movieElement.pause();
 								movieElement.currentTime -= 1.0 / 60;
@@ -702,6 +712,7 @@ if (moviePageLoaded == null) {
 							break;
 						case 34:	/* page down */
 						case 39:	/* right */
+						case 40: 	/* down */
 							if (event.altKey) {
 								movieElement.pause();
 								movieElement.currentTime += 1.0 / 60;
