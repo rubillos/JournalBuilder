@@ -6,7 +6,7 @@
     "configurations": [
         {
             "name": "Python: Current File",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
@@ -19,27 +19,33 @@
 
                 // "-a",
                 // "2021-10-13 DC",
-                "-nc",
                 // "-o",
                 // "-t",
                 // "-f",
                 // "-r",
-                // "-s",
+                "-s",
                 // "-ac",
                 // "-w",
                 // "-c"
 
+                "-nc",
+                "-c",
+                "-x",
+                // "-dr",
+                // "/Users/randy/Sites/PortlandAve/travel/2024-02-06-SriLankaIndia",
+                // "/Users/randy/Sites/PortlandAve/travel/2024-09-27-ViennaZurich",
+                // "/Users/randy/Sites/PortlandAve/Local/2025-02-19-Lexi",
+                "/Users/randy/Sites/PortlandAve/Local/2025-03-06-JakeQuincy",
 
                 // "/Users/randy/Sites/PortlandAve/Local/2021-05-27-RussAndJustin",
                 // "-a",
                 // "2021-05-27 Russ & Justin",
                 // "-f",
-                "-c",
                 // "-t"
 
                 // "/Users/randy/Sites/PortlandAve/travel/2022-02-21-Iceland",
                 // "/Users/randy/Sites/PortlandAve/travel/Test1",
-                "/Users/randy/Sites/PortlandAve/travel/2022-07-17-Alaska2",
+                // "/Users/randy/Sites/PortlandAve/travel/2022-07-17-Alaska2",
                 // "/Users/randy/Sites/PortlandAve/travel/2022-04-13-Peru",
                 // "/Users/randy/Sites/PortlandAve/Local/2023-02-28-RVProjects2",
                 // "/Users/randy/Sites/PortlandAve/travel/2022-09-29-London",
@@ -50,7 +56,6 @@
                 // "-nc",
                 // "-df",
                 // "-t",
-                // "-x",
                 // "-xx",
                 // "-ac",
                 // "-desc",
