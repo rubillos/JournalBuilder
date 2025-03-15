@@ -246,7 +246,7 @@ if (indexPageLoaded == null) {
 			}
 		}
 
-		const singleSrc = $("#picblock").length > 0;
+		const singleSrc = $("#picblock,td.sideinfo").length > 0;
 
 		$("img").each(function() {
 			var $img = $(this);
