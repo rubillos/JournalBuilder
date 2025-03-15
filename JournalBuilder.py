@@ -147,10 +147,12 @@ page_headers = []
 photokit_script_path = "PhotoList"
 
 thumb_folder_root = "thumbnails"
-thumb_name_root = "thumb-"
 picture_folder_root = "pictures"
+header_folder_root = "headers"
+
+thumb_name_root = "thumb-"
 picture_name_root = "picture-"
-header_name_root = "Placed Image"
+header_name_root = "header-"
 index_root = "index"
 detail_root = "large-"
 
@@ -190,6 +192,16 @@ def print_error(*args, dest_console=console):
 
 	dest_console.print("".join(parts))
 
+def createFolder(path):
+	if "." in path:
+		path = os.path.dirname(path)
+	try:
+		os.makedirs(path, exist_ok=True)
+		return True
+	except OSError as e:
+		console.print(f"Error creating folder '{path}': {e}")
+		return False
+	
 def open_image_file(file_ref):
 	image = None
 
@@ -315,24 +327,27 @@ def save_versions(image_ref, ref_index, version_data, header_info, image_folders
 
 		if result >= 0 and header_info:
 			header_size = (version_data["page_width"], version_data["header_height"])
-			for scale, suffix, index in [ (1, "", 0), (2, "@2x", 1), (3, "@3x", 2)]:
-				output_path = os.path.join(version_data["destination_folder"], header_image_url(header_info[2], suffix=suffix, for_html=False))
-				try:
-					if large_images[index]:
-						source_image = large_images[index]
-					else:
-						source_image = image
-					save_time, scale_time = save_scaled_header(source_image, (header_size[0] * scale, header_size[1] * scale), header_info[1], output_path, sampling, profile)
-					if do_timing:
-						if not "header_save_time" in timing_data:
-							timing_data["header_save_time"] = 0
-							timing_data["header_scale_time"] = 0
-						timing_data["header_save_time"] += save_time
-						timing_data["header_scale_time"] += scale_time
-					result = result + 1 if result >= 0 else result
-				except OSError as e:
-					result = -1
-					error_msg = "Error saving: " + output_path + ", " + str(e)
+			for folder_name, name_root, size, index in image_folders:
+				if folder_name.startswith(picture_folder_root):
+					suffix = folder_name.removeprefix(picture_folder_root)
+					scale = int(size / base_image_size)
+					output_path = os.path.join(version_data["destination_folder"], header_image_url(header_info[2], suffix=suffix, for_html=False))
+					try:
+						if large_images[index]:
+							source_image = large_images[index]
+						else:
+							source_image = image
+						save_time, scale_time = save_scaled_header(source_image, (header_size[0] * scale, header_size[1] * scale), header_info[1], output_path, sampling, profile)
+						if do_timing:
+							if not "header_save_time" in timing_data:
+								timing_data["header_save_time"] = 0
+								timing_data["header_scale_time"] = 0
+							timing_data["header_save_time"] += save_time
+							timing_data["header_scale_time"] += scale_time
+						result = result + 1 if result >= 0 else result
+					except OSError as e:
+						result = -1
+						error_msg = "Error saving: " + output_path + ", " + str(e)
 	else:
 		result = -1
 		error_msg = "Cannot open: " + image_ref["file_path"]
@@ -503,7 +518,7 @@ def top_link_url(caption, datestring):
 	return("{}/index.html".format(url))
 
 def header_image_url(page_num, for_html=True, suffix=""):
-	return "{} - {:d}{}.jpg{}".format(header_name_root, page_num, suffix, cache_suffix(for_html))
+	return "{}/{}{:d}{}.jpg{}".format(header_folder_root, header_name_root, page_num, suffix, cache_suffix(for_html))
 
 def picture_url(name_root, page_num, for_html=True):
 	return "{}{}.jpg{}".format(name_root, page_num, cache_suffix(for_html))
@@ -1412,7 +1427,7 @@ def main():
 		files_removed = 0
 		for name in os.listdir(destination_folder):
 			path = os.path.join(destination_folder, name)
-			if name.startswith(thumb_folder_root) or name.startswith(picture_folder_root) or name=="assets" or name=="js":
+			if name.startswith(thumb_folder_root) or name.startswith(picture_folder_root) or name.startswith(header_folder_root) or name=="assets" or name=="js":
 				shutil.rmtree(path)
 				folders_removed += 1
 			elif name.startswith(thumb_name_root) or name.startswith(picture_name_root) or name.startswith(header_name_root) or name.startswith(index_root) or name.startswith(detail_root) or name=="movies.txt":
@@ -1459,6 +1474,9 @@ def main():
 
 	image_timing = None
 	image_rate = 0
+
+	# make header folder
+	os.mkdir(os.path.join(destination_folder, header_folder_root))
 
 	image_count = len(final_image_refs)
 	if image_count>0:
@@ -1664,7 +1682,7 @@ def main():
 		replace_key(index_lines, "_NavWidth_", str(nav_width))
 		replace_key(index_lines, "_ThumbSize_", str(thumb_size))
 		replace_key(index_lines, "_HeaderHeight_", str(header_height))
-			
+		
 		nav_index, nav_lines = extract_section(index_lines, "nav", "endnav")
 		_, photo_lines = extract_section(index_lines, "picblock", "endpicblock")
 		_, title_line = extract_section(index_lines, "title1item")
@@ -1688,6 +1706,12 @@ def main():
 				replace_key(new_index_lines, "_PageTitle_", html.escape(page_title))
 				replace_key(new_index_lines, "_MetaDesc_", html.escape(args.metadesc))
 				replace_key(new_index_lines, "_SiteHeading_", html.escape(journal_title))
+
+				header_ref, header_offset, page_num = page_headers[page_index-1]
+				if header_ref != None:
+					replace_key(new_index_lines, "_HeaderSizes_", str(header_ref["folder_count"]))
+				else:
+					replace_key(new_index_lines, 'sizes="_HeaderSizes_" ', "")
 				
 				if page_count == 1 and not force_nav:
 					extract_section(new_index_lines, "prevnext", "endprevnext")
