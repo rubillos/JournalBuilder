@@ -1266,7 +1266,7 @@ def main():
 						valid_sizes = [(960, 540, 4), (640, 480, 4), (1280, 720, 5), (1920, 1080, 5), (3840, 2160, 9), (640, 360, 6)]
 						for width, height, index in valid_sizes:
 							if height in heights:
-								movie_fields[index] = "{:d},{:d},{}".format(width, height, heights[height])
+								movie_fields[index if len(heights) > 1 else 4] = "{:d},{:d},{}".format(width, height, heights[height])
 
 						movie_fields[3] = caption
 						movie_fields[8] = "*"
