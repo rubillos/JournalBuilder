@@ -23,19 +23,20 @@
                 // "-t",
                 // "-f",
                 // "-r",
-                "-s",
+                // "-s",
                 // "-ac",
                 // "-w",
                 // "-c"
 
                 "-nc",
                 "-c",
-                "-x",
+                // "-x",
                 // "-dr",
+                "/Users/randy/Sites/PortlandAve/travel/2024-06-25-VancouverIsland2",
                 // "/Users/randy/Sites/PortlandAve/travel/2024-02-06-SriLankaIndia",
                 // "/Users/randy/Sites/PortlandAve/travel/2024-09-27-ViennaZurich",
                 // "/Users/randy/Sites/PortlandAve/Local/2025-02-19-Lexi",
-                "/Users/randy/Sites/PortlandAve/Local/2025-03-06-JakeQuincy",
+                // "/Users/randy/Sites/PortlandAve/Local/2025-03-06-JakeQuincy",
 
                 // "/Users/randy/Sites/PortlandAve/Local/2021-05-27-RussAndJustin",
                 // "-a",
