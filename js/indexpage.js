@@ -235,6 +235,7 @@ if (indexPageLoaded == null) {
 		}
 		
 		const pageScale = (window.outerWidth / window.innerWidth) * window.devicePixelRatio;
+		const folder_scales = [1, 2, 3, 4, 6, 8, 12];
 		
 		$("img").each(function() {
 			var $img = $(this);
@@ -259,7 +260,7 @@ if (indexPageLoaded == null) {
 					}
 					let srcSet = `${encodedName} ${width}w`;
 					for (let i = 2; i <= sizes; i++) {
-						srcSet += `, ${encodedName.replace('.', `@${i}x.`)} ${width*i}w`;
+						srcSet += `, ${encodedName.replace('.', `@${folder_scales[i-1]}x.`)} ${width*i}w`;
 					}
 					$img.attr("srcset", srcSet);
 					$img.attr("filename", null);
@@ -281,6 +282,13 @@ if (indexPageLoaded == null) {
 								srcSet = `${srcSet}, pictures@2x/${picName} 2048w`;
 							}
 						}
+						$img.on('error', function() {
+							let srcSet = $img.attr('srcset').split(', ');
+							if (srcSet.length > 3) {
+								srcSet.pop();
+								$img.attr('srcset', srcSet.join(', '));
+							}
+						});
 						$img.attr("srcset", srcSet);
 						$img.attr("src", null);
 					}
