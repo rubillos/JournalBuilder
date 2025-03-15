@@ -237,6 +237,17 @@ if (indexPageLoaded == null) {
 		const pageScale = (window.outerWidth / window.innerWidth) * window.devicePixelRatio;
 		const folder_scales = [1, 2, 3, 4, 6, 8, 12];
 		
+		function srcSetError() {
+			const $img = $(this);
+			let srcSet = $img.attr('srcset').split(', ');
+			if (srcSet.length > 1) {
+				srcSet.pop();
+				$img.attr('srcset', srcSet.join(', '));
+			}
+		}
+
+		const singleSrc = $("#picblock").length > 0;
+
 		$("img").each(function() {
 			var $img = $(this);
 			
@@ -247,6 +258,8 @@ if (indexPageLoaded == null) {
 				var encodedName = parts.join('?')
 				let width = this.width;
 				
+				$img.on('error', srcSetError);
+
 				if (filename.indexOf("Placed Image")==0 || filename.indexOf("headers")==0) {
 					if (filename.indexOf("headers") == 0) {
 						encodedName = filename;
@@ -282,16 +295,19 @@ if (indexPageLoaded == null) {
 								srcSet = `${srcSet}, pictures@2x/${picName} 2048w`;
 							}
 						}
-						$img.on('error', function() {
-							let srcSet = $img.attr('srcset').split(', ');
-							if (srcSet.length > 3) {
-								srcSet.pop();
-								$img.attr('srcset', srcSet.join(', '));
-							}
-						});
 						$img.attr("srcset", srcSet);
 						$img.attr("src", null);
 					}
+				}
+			}
+			else if (singleSrc && $img.attr("srcset") == null) {
+				const src = $img.attr('src');
+				if (src.indexOf("Placed Image")==-1) {
+					$img.on('error', srcSetError);
+					const width = this.width;
+					const src2 = src.replace("thumbnails", "pictures").replace("thumb", "picture");
+					$img.attr('srcset', `${src} ${width}w, ${src2} 1024w`);
+					$img.attr("src", null);
 				}
 			}
 		});
