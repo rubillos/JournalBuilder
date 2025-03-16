@@ -26,13 +26,16 @@
                 // "-s",
                 // "-ac",
                 // "-w",
-                // "-c"
+                // "-c",
+                "-q",
+                "80",
 
                 // "-nc",
                 "-c",
                 // "-x",
                 // "-dr",
-                "/Users/randy/Sites/PortlandAve/travel/2024-06-25-VancouverIsland2",
+                "/Users/randy/Sites/PortlandAve/travel/2024-06-25-VancouverIsland3",
+                // "/Users/randy/Sites/PortlandAve/travel/2024-06-25-VancouverIsland2",
                 // "/Users/randy/Sites/PortlandAve/travel/2024-02-06-SriLankaIndia",
                 // "/Users/randy/Sites/PortlandAve/travel/2024-09-27-ViennaZurich",
                 // "/Users/randy/Sites/PortlandAve/Local/2025-02-19-Lexi",
