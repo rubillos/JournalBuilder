@@ -66,7 +66,7 @@ subgroup.add_argument("-r", "--reorder", dest="reorder_thumbs", help="Re-order t
 subgroup.add_argument("-dr", "--dont_reorder", dest="dont_reorder_thumbs", help="Do not reorder thumbs to minimize page height", action="store_true")
 group.add_argument("-ds", "--dont_split", dest="dont_split", help="Don't split photo blocks with multiple text paragraphs", action="store_true")
 group.add_argument("-fc", dest="folder_count", help="Maximum number of photo folders to create.", type=int, default=0)
-group.add_argument("-q", dest="jpeg_quality", help="JPEG quality level (default: high)", type=str, choices=["low", "medium", "high", "very_high", "maximum"], default="high")
+group.add_argument("-q", dest="jpeg_quality", help="JPEG quality level, either a number from 1-100 or one of: low, medium, high, very_high, maximum, web_low, web_medium, web_high, web_very_high, web_maximum (default: high)", type=str, default="high")
 group.add_argument("-ti", "--top_index", dest="top_index", help="Generate a top level index page, photo captions are paths to sub-journals", action="store_true")
 group.add_argument("-o", "--output", dest="output_journal", help="Generate a new journal.txt file - will rename existing file if present", action="store_true")
 group.add_argument("-jsp", "--jspath", dest="js_path", help="Path to javascript folder", type=str, default="../..")
@@ -155,8 +155,6 @@ picture_name_root = "picture-"
 header_name_root = "header-"
 index_root = "index"
 detail_root = "large-"
-
-jpeg_quality = {"low":"web_low", "medium":"web_medium", "high":"web_high", "very_high":"web_very_high", "maximum":"web_maximum"}
 
 date_format = "%Y-%m-%d %H:%M:%S"
 date_formats = [date_format, "%Y:%m:%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d", "%Y:%m:%d"]
@@ -248,7 +246,10 @@ def scaled_size(input_size, max_size):
 def save_versions(image_ref, ref_index, version_data, header_info, image_folders):
 	def save_image(image, path, profile):
 		with open(path, "wb") as file:
-			image.save(file, "JPEG", quality=args.jpeg_quality, icc_profile=profile)
+			q = args.jpeg_quality
+			if int(q) >= 1 and int(q) <= 100:
+				q = int(q)
+			image.save(file, "JPEG", quality=q, icc_profile=profile)
 
 	def save_scaled(image, size, path, sampling, profile):
 		start_time = time.time()
