@@ -32,6 +32,7 @@ if (indexPageLoaded == null) {
 	var $content = $("#content");
 	var videoElements = [];
 	var maxZoom = 120;
+	var pageZoom = 100;
 	var isLocal = false;
 
 	var margins = (screenWidth < 700) ? 40 : 80;
@@ -79,9 +80,9 @@ if (indexPageLoaded == null) {
 			}
 			
 			var zoomScale = window.innerWidth / (contentWidth + margins);
-			var newZoom = Math.min(maxZoom, currentZoom * zoomScale);
+			pageZoom = Math.min(maxZoom, currentZoom * zoomScale);
 			
-			$('body').css("zoom", newZoom+"%");
+			$('body').css("zoom", pageZoom+"%");
 		}
 	}
 		
@@ -234,7 +235,7 @@ if (indexPageLoaded == null) {
 			$('body').css("zoom", zoom+"%");
 		}
 		
-		const pageScale = (window.outerWidth / window.innerWidth) * window.devicePixelRatio;
+		const pageScale = (window.outerWidth / window.innerWidth) * window.devicePixelRatio * pageZoom / 100.0;
 		const folder_scales = [1, 2, 3, 4, 6, 8, 12];
 		
 		function srcSetError() {
@@ -289,6 +290,7 @@ if (indexPageLoaded == null) {
 							width = 200;
 						}
 						let srcSet = `thumbnails/${encodedName} ${width}w, thumbnails@2x/${encodedName} ${width*2}w, thumbnails@3x/${encodedName} ${width*3}w`;
+						
 						if (pageScale > 3) {
 							const picName = encodedName.replace("thumb", "picture");
 							srcSet = `${srcSet}, pictures/${picName} 1024w`;
