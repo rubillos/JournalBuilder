@@ -319,7 +319,7 @@ if (moviePageLoaded == null) {
 				movieInfo = movieItems[standardMovieIndex];
 				smallMovie = true;
 				loadingHD = true;
-			} else if (has4K && (requesting4K || bigScreen)) {
+			} else if (has4K && !requestingHD && (requesting4K || bigScreen)) {
 				movieInfo = movieItems[fourKMovieIndex];
 				loading4K = true;
 			} else if (requestingHD || requesting4K) {
@@ -405,7 +405,7 @@ if (moviePageLoaded == null) {
 				default:			heightNumber = "" + currentMovieHeight + "p";	break;
 			}
 			
-			var heightSuffix = " <span style='font-size: 50%;''>(" + heightNumber + ")</span>";
+			var heightSuffix = " <span id='vidheight' style='font-size: 50%;''>(" + heightNumber + ")</span>";
 			
 			if (pageCount > 1) {
 				$("#current").html(pageNumber+" - "+movieItems[pageTitleIndex] + heightSuffix);			
@@ -492,25 +492,30 @@ if (moviePageLoaded == null) {
 					var $src1 = $("<source type='video/mp4' codecs='hvc1'>");
 					var $src2 = $("<source type='video/mp4' codecs='avc1'>");
 					var $origMovieObj = $currentMovieObj;
+
+					function adjustHeight(vidElement) {
+						$vidHeight = $("#vidheight");
+						if ($vidHeight.length > 0) {
+							let heightStr = `(${vidElement.videoHeight}p${vidElement.currentSrc.contains("-HEVC") ? " - HEVC" : ""})`.replace("1080p", "1080HD").replace("2160p", "4K");
+							$vidHeight.text(heightStr);
+						}
+					}
 					
 					$newVideo.on("loadedmetadata", function () {
 						var curSrc = $newVideo[0].currentSrc;
 
 						$currentMovieObj.css("min-height", "");
-						
+						adjustHeight($newVideo[0]);
+
 						if (curSrc.contains("-HEVC")) {
 							var $label = $("#current");
-							var origText = $label.html();
-							
-							$label.html(origText.replace(")", " - HEVC)"));
 							$label.css("cursor", "pointer");
 							
 							$label.one("click", function() {
-								$label.html(origText);
-								
 								$("#fszoom").remove();
 								$origMovieObj.on("loadedmetadata", function () {
 									$origMovieObj.css("min-height", "");
+									adjustHeight($origMovieObj[0]);
 									$("head").append($zoomStyle);
 								});
 								
@@ -531,6 +536,13 @@ if (moviePageLoaded == null) {
 					$src2.attr("src", movieName);
 					$newVideo.attr("style", $currentMovieObj.attr("style"));
 					$newVideo.append($src1, $src2);
+					if (movieName.contains("-2160p")) {
+						$src1 = $src1.clone();
+						$src2 = $src2.clone();
+						$src1.attr("src", movieName.replace("-2160p", "-1080p").replace(".m", "-HEVC.m"));
+						$src2.attr("src", movieName.replace("-2160p", "-1080p"));
+						$newVideo.append($src1, $src2);
+					}
 					$currentMovieObj.replaceWith($newVideo);
 					$currentMovieObj = $newVideo;
 				}

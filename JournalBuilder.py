@@ -33,13 +33,18 @@ parser = argparse.ArgumentParser(description='Generate a web journal')
 parser.add_argument("folder", metavar='dest_folder', help="Destination folder", type=str, nargs="?")
 
 parser.add_argument("-g", "--guide", dest="documentation", help="Show user guide", action="store_true")
-parser.add_argument("-c", "--clean", dest="clean", help="Remove all existing output files", action="store_true")
 parser.add_argument("-t", "--timing", dest="timings", help="Print timing information", action="store_true")
 parser.add_argument("-s", "--single", dest="single_thread", help="Run all tasks on main thread", action="store_true")
 parser.add_argument("-nc", "--nocache", dest="no_cache", help="Prevent caching of images and links (for debugging)", action="store_true")
 parser.add_argument("-x", "--express", dest="express", help="Express mode - one file per image", action="store_true")
 parser.add_argument("-xx", "--extraexpress", dest="extraexpress", help="Extra Express mode - one file per image, only generate thumbnails", action="store_true")
 parser.add_argument("-b", "--browser", dest="open_result", help="Open output journal in browser", action="store_true")
+
+group = parser.add_argument_group("cleaning")
+group.add_argument("-c", "--clean", dest="clean", help="Remove all existing output files", action="store_true")
+group.add_argument("-cm", "--clean_html", dest="clean_html", help="Remove existing html files", action="store_true")
+group.add_argument("-ci", "--clean_images", dest="clean_images", help="Remove existing images", action="store_true")
+group.add_argument("-ch", "--clean_headers", dest="clean_headers", help="Remove existing header images", action="store_true")
 
 group = parser.add_argument_group("album settings")
 group.add_argument("-db", dest="data_base", help="Path to Photos library (default: system library)", type=str, default=None)
@@ -117,6 +122,9 @@ if args.documentation:
 
 if args.do_diff:
 	args.clean = False
+	args.clean_html = False
+	args.clean_images = False
+	args.clean_headers = False
 
 start_time = time.time()
 
@@ -153,6 +161,7 @@ header_folder_root = "headers"
 thumb_name_root = "thumb-"
 picture_name_root = "picture-"
 header_name_root = "header-"
+old_header_name_root = "Placed Image - "
 index_root = "index"
 detail_root = "large-"
 
@@ -308,23 +317,23 @@ def save_versions(image_ref, ref_index, version_data, header_info, image_folders
 
 		for folder_name, name_root, size, index in image_folders:
 			output_path = os.path.join(version_data["destination_folder"], folder_name, picture_url(name_root, image_ref["picture_num"], False))
-
-			try:
-				if index!=-1 and large_images[index]:
-					source_image = large_images[index]
-				else:
-					source_image = image
-				new_size = scaled_size(image_size, size)
-				scaled_image, save_time, scale_time = save_scaled(source_image, new_size, output_path, sampling, profile)
-				if do_timing:
-					timing_data["save_time"] += save_time
-					timing_data["scale_time"] += scale_time
-				if index!=-1:
-					large_images[index] = scaled_image
-				result = result + 1 if result>=0 else result
-			except OSError as e:
-				result = -1
-				error_msg = "Error saving: " + output_path + ", " + str(e)
+			if not os.path.exists(output_path):
+				try:
+					if index!=-1 and large_images[index]:
+						source_image = large_images[index]
+					else:
+						source_image = image
+					new_size = scaled_size(image_size, size)
+					scaled_image, save_time, scale_time = save_scaled(source_image, new_size, output_path, sampling, profile)
+					if do_timing:
+						timing_data["save_time"] += save_time
+						timing_data["scale_time"] += scale_time
+					if index!=-1:
+						large_images[index] = scaled_image
+					result = result + 1 if result>=0 else result
+				except OSError as e:
+					result = -1
+					error_msg = "Error saving: " + output_path + ", " + str(e)
 
 		if result >= 0 and header_info:
 			header_size = (version_data["page_width"], version_data["header_height"])
@@ -333,22 +342,23 @@ def save_versions(image_ref, ref_index, version_data, header_info, image_folders
 					suffix = folder_name.removeprefix(picture_folder_root)
 					scale = int(size / base_image_size)
 					output_path = os.path.join(version_data["destination_folder"], header_image_url(header_info[2], suffix=suffix, for_html=False))
-					try:
-						if large_images[index]:
-							source_image = large_images[index]
-						else:
-							source_image = image
-						save_time, scale_time = save_scaled_header(source_image, (header_size[0] * scale, header_size[1] * scale), header_info[1], output_path, sampling, profile)
-						if do_timing:
-							if not "header_save_time" in timing_data:
-								timing_data["header_save_time"] = 0
-								timing_data["header_scale_time"] = 0
-							timing_data["header_save_time"] += save_time
-							timing_data["header_scale_time"] += scale_time
-						result = result + 1 if result >= 0 else result
-					except OSError as e:
-						result = -1
-						error_msg = "Error saving: " + output_path + ", " + str(e)
+					if not os.path.exists(output_path):
+						try:
+							if large_images[index]:
+								source_image = large_images[index]
+							else:
+								source_image = image
+							save_time, scale_time = save_scaled_header(source_image, (header_size[0] * scale, header_size[1] * scale), header_info[1], output_path, sampling, profile)
+							if do_timing:
+								if not "header_save_time" in timing_data:
+									timing_data["header_save_time"] = 0
+									timing_data["header_scale_time"] = 0
+								timing_data["header_save_time"] += save_time
+								timing_data["header_scale_time"] += scale_time
+							result = result + 1 if result >= 0 else result
+						except OSError as e:
+							result = -1
+							error_msg = "Error saving: " + output_path + ", " + str(e)
 	else:
 		result = -1
 		error_msg = "Cannot open: " + image_ref["file_path"]
@@ -784,7 +794,7 @@ def scan_header(journal, date_overrides):
 				args.album_name = text
 				args.favorites = albumFavoritesOnly
 				args.open_result = True
-				args.clean = True
+				# args.clean = True
 				if not args.dont_reorder_thumbs:
 					args.reorder_thumbs = True
 			case("year"):
@@ -1422,18 +1432,35 @@ def main():
 		thumb_folders = thumb_folders[0:1]
 
 	# clean existing output files
-	if args.clean:
+	if args.clean or args.clean_html or args.clean_images or args.clean_headers:
 		print_now("Cleaning destination folder...")
 		folders_removed = 0
 		files_removed = 0
 		for name in os.listdir(destination_folder):
+			deleteFile = False
+			deleteFolder = False
 			path = os.path.join(destination_folder, name)
-			if name.startswith(thumb_folder_root) or name.startswith(picture_folder_root) or name.startswith(header_folder_root) or name=="assets" or name=="js":
-				shutil.rmtree(path)
-				folders_removed += 1
-			elif name.startswith(thumb_name_root) or name.startswith(picture_name_root) or name.startswith(header_name_root) or name.startswith(index_root) or name.startswith(detail_root) or name=="movies.txt":
+			if (args.clean or args.clean_images) and (name.startswith(thumb_folder_root) or name.startswith(picture_folder_root)):
+				deleteFolder = True
+			elif (args.clean or args.clean_images) and (name.startswith(thumb_name_root) or name.startswith(picture_name_root)):
+				deleteFile = True
+			elif (args.clean or args.clean_headers) and name.startswith(header_folder_root):
+				deleteFolder = True
+			elif (args.clean or args.clean_headers) and (name.startswith(header_name_root) or name.startswith(old_header_name_root)):
+				deleteFile = True
+			elif (args.clean or args.clean_html) and (name.startswith(index_root) or name.startswith(detail_root)):
+				deleteFile = True
+			elif args.clean and (name=="assets" or name=="js"):
+				deleteFolder = True
+			elif args.clean and name=="movies.txt":
+				deleteFile = True
+
+			if deleteFile:
 				os.remove(path)
 				files_removed += 1
+			elif deleteFolder:
+				shutil.rmtree(path)
+				folders_removed += 1
 		if files_removed>0 or folders_removed>0:
 			console.print(" removed {} and {}.".format(pluralize("folder", folders_removed), pluralize("file", files_removed)))
 		else:
@@ -1568,7 +1595,7 @@ def main():
 					if result < 0:
 						print_error("Image Save Error: ", file_name, error_msg, dest_console=progress.console)
 					else:
-						completed_count += 1
+						completed_count += result
 
 					image_rate = completed_count / (time.time() - image_process_start)
 					progress.update(task, advance=1, ips=image_rate, color="bright_green")
@@ -1589,12 +1616,14 @@ def main():
 					if result < 0:
 						print_error("Image Save Error: ", final_image_refs[ref_index]["file_name"], error_msg, dest_console=progress.console)
 					else:
-						completed_count += 1
+						completed_count += result
 
 					image_rate = completed_count / (time.time() - image_process_start)
 					progress.update(task, advance=1, ips=image_rate, color="bright_green")
 
 			progress.update(task, refresh=True, color="conceal")
+
+	console.print(f"Generated {completed_count} images")
 
 	image_process_time = time.time() - image_process_start
 	html_generate_start = time.time()
@@ -1666,13 +1695,14 @@ def main():
 				
 				remove_tags(new_detail_lines, "rkid", "removeonfirst", "removeonlast")
 
-				try:
-					with open(detail_path, "w") as detail_file:
-						detail_file.writelines(new_detail_lines)
-						progress.update(task, advance=1)
-						
-				except OSError as e:
-					print_error("Error saving: ", detail_path, e, dest_console=progress.console)
+				if not os.path.exists(detail_path):
+					try:
+						with open(detail_path, "w") as detail_file:
+							detail_file.writelines(new_detail_lines)
+							progress.update(task, advance=1)
+							
+					except OSError as e:
+						print_error("Error saving: ", detail_path, e, dest_console=progress.console)
 	
 	# write the index html pages
 	if page_count>0:
@@ -1774,13 +1804,14 @@ def main():
 				remove_tags(new_index_lines, "rkid", "removeonfirst", "removeonlast")
 
 				output_path = os.path.join(destination_folder, index_url(page_index, for_html=False))
-				try:
-					with open(output_path, "w") as file:
-						file.writelines(new_index_lines)
-						progress.update(task, advance=1)
-		
-				except OSError as e:
-					print_error("Error saving: ", output_path, e, dest_console=progress.console)
+				if not os.path.exists(output_path):
+					try:
+						with open(output_path, "w") as file:
+							file.writelines(new_index_lines)
+							progress.update(task, advance=1)
+			
+					except OSError as e:
+						print_error("Error saving: ", output_path, e, dest_console=progress.console)
 					
 				page_index += 1
 	
