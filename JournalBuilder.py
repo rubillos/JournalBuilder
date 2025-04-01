@@ -256,8 +256,11 @@ def save_versions(image_ref, ref_index, version_data, header_info, image_folders
 	def save_image(image, path, profile):
 		with open(path, "wb") as file:
 			q = args.jpeg_quality
-			if int(q) >= 1 and int(q) <= 100:
-				q = int(q)
+			try:
+				if int(q) >= 1 and int(q) <= 100:
+					q = int(q)
+			except:
+				pass
 			image.save(file, "JPEG", quality=q, icc_profile=profile)
 
 	def save_scaled(image, size, path, sampling, profile):
