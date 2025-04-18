@@ -1,339 +1,382 @@
-var indexPageLoaded;
+let indexPageLoaded;
 
 if (indexPageLoaded == null) {
 	indexPageLoaded = true;
 
-	$.event.special.touchstart = { setup: function( _, ns, handle ){ this.addEventListener("touchstart", handle, { passive: true }); } };
-	$.event.special.touchmove = { setup: function( _, ns, handle ){ this.addEventListener("touchmove", handle, { passive: true }); } };
-	$.event.special.scroll = { setup: function( _, ns, handle ){ this.addEventListener("scroll", handle, { passive: true }); } };
-	$.event.special.resize = { setup: function( _, ns, handle ){ this.addEventListener("resize", handle, { passive: true }); } };
-	$.event.special.mouseenter = { setup: function( _, ns, handle ){ this.addEventListener("mouseenter", handle, { passive: true }); } };
-	$.event.special.mouseleave = { setup: function( _, ns, handle ){ this.addEventListener("mouseleave", handle, { passive: true }); } };
+	function findID(id) {
+		return document.getElementById(id);
+	}
 	
-	String.prototype.splitLines = function() {
-		return this.split(/\r\n|\r|\n/g);
-	};
+	function find(selector) {
+		return document.querySelectorAll(selector);
+	}
 	
-	var version_attr = $("body").attr("version")
-	var version = (version_attr!=null && version_attr.length>0) ? parseInt(version_attr) : 1
-	
-	if (version < 2) {
-		var newTitle = document.title.split(" - ")[0].split("@1x")[0].split("• ").join("").split(" •").join("");
-		if (/\d\d\d\d-\d\d-\d\d-/.test(newTitle)) {
-			newTitle = newTitle.slice(11);
-		}
-		document.title = newTitle;
+	function findOne(selector) {
+		return document.querySelector(selector);
 	}
 
-	var screenWidth = screen.width;
-	var contentWidth = 800;
-	var mobileDevice = false;
-	var panopage = false;
-	var $content = $("#content");
-	var videoElements = [];
-	var maxZoom = 120;
-	var pageZoom = 100;
-	var isLocal = false;
-
-	var margins = (screenWidth < 700) ? 40 : 80;
-	
-	if (window.visualViewport != null) {
-		if (window.visualViewport.width < 500) {
-			screenWidth = 680;
+	document.addEventListener("DOMContentLoaded", function() {
+		document.addEventListener("touchstart", function(event) {}, { passive: true });
+		document.addEventListener("touchmove", function(event) {}, { passive: true });
+		document.addEventListener("scroll", function(event) {}, { passive: true });
+		window.addEventListener("resize", function(event) {}, { passive: true });
+		document.addEventListener("mouseenter", function(event) {}, { passive: true });
+		document.addEventListener("mouseleave", function(event) {}, { passive: true });
+		
+		String.prototype.splitLines = function() {
+			return this.split(/\r\n|\r|\n/g);
+		};
+		
+		var version_attr = document.body.getAttribute("version");
+		var version = (version_attr !== null && version_attr.length > 0) ? parseInt(version_attr) : 1;
+		
+		if (version < 2) {
+			var newTitle = document.title.split(" - ")[0].split("@1x")[0].split("• ").join("").split(" •").join("");
+			if (/\d\d\d\d-\d\d-\d\d-/.test(newTitle)) {
+				newTitle = newTitle.slice(11);
+			}
+			document.title = newTitle;
 		}
-	}
-	
-	if ($content.length == 1) {
-		contentWidth = $content.outerWidth();
-	}
-	if (contentWidth == 0) {
-		contentWidth = $("#headerImg > img").outerWidth();
-	}
-	
-	if ((screenWidth < contentWidth) && ($('head > meta[name="viewport"]').length == 0)) {
-		$('head').append('<meta name="viewport" content="width='+(contentWidth+margins)+'">');
-	}
-	else {
-		if (document.location.href.includes("Users/mediaserver") && $(window).width()>(contentWidth+100) && $(".sideinfo").length==0) {
-			maxZoom = 150;
-			isLocal = true;
+
+		let screenWidth = screen.width;
+		let contentWidth = 800;
+		let mobileDevice = false;
+		let panopage = false;
+		let content = findID("content");
+		let videoElements = [];
+		let maxZoom = 120;
+		let pageZoom = 100;
+		let isLocal = false;
+
+		let margins = (screenWidth < 700) ? 40 : 80;
+		
+		if (window.visualViewport != null) {
+			if (window.visualViewport.width < 500) {
+				screenWidth = 680;
+			}
 		}
 		
-		updateZoom();
+		if (content) {
+			contentWidth = content.offsetWidth;
+		}
+		if (contentWidth == 0) {
+			const headerImg = document.querySelector("#headerImg > img");
+			contentWidth = headerImg ? headerImg.offsetWidth : 0;
+		}
+		
+		if ((screenWidth < contentWidth) && (findOne('head > meta[name="viewport"]') === null)) {
+			const meta = document.createElement('meta');
+			meta.name = "viewport";
+			meta.content = `width=${contentWidth + margins}`;
+			document.head.appendChild(meta);
+		} else {
+			if (document.location.href.includes("Users/mediaserver") && window.innerWidth > (contentWidth + 100) && find(".sideinfo").length === 0) {
+				maxZoom = 150;
+				isLocal = true;
+			}
 
-		$(window).resize(function() {
 			updateZoom();
-		});
-	}
-	
-	function updateZoom() {
-		if (contentWidth+margins > window.innerWidth) {
-			var zoom = Math.max(50, window.innerWidth / (contentWidth + margins) * 100);
-			$('body').css("zoom", zoom+"%");
-		}
-		else if ($('body').css("zoom") != null) {
-			var zoomText = $('body').css("zoom");
-			var currentZoom = parseFloat(zoomText);
-			
-			if (!zoomText.slice(-1) != "%") {
-				currentZoom *= 100.0;
-			}
-			
-			var zoomScale = window.innerWidth / (contentWidth + margins);
-			pageZoom = Math.min(maxZoom, currentZoom * zoomScale);
-			
-			$('body').css("zoom", pageZoom+"%");
-		}
-	}
-		
-	if ($("#content").attr("panopage") != null) {
-		$("#picblock > tbody > tr").each(function() {
-			var $obj = $(this);
-			$obj.children("td:gt(0)").detach().wrap("<tr></tr>").parent().appendTo($obj.parent());
-		});
-		$("#picblock .imageblock").each(function() {
-			var $obj = $(this);
-			
-			$obj.width(4 * $obj.width());
-			
-			var headerWidth = $("div#headerImg > img").width();
 
-			$obj.find("img").each(function() {
-				var $img = $(this);
-				
-				var aspectRatio = $img.height() / $img.width();
-				$img.width(headerWidth);
-				$img.height(headerWidth * aspectRatio);
+			window.addEventListener("resize", function() {
+				updateZoom();
 			});
-		});
-		panopage = true;
-	}
-	
-	if (screenWidth < 700) {
-		if (!panopage && $("body").css("display") == "none") {
-			if ($("#content").attr("norewrap") == null) {
-				if (version>="3") {
-					$picblock = $("div.picblock");
-					
-					if ($picblock.length > 0) {
-						sizeText = $picblock.css("grid-template-columns");
-						commaIndex = sizeText.indexOf(",");
-						if (commaIndex != -1) {
-							sizeText = sizeText.slice(commaIndex+1);
-						}
-						
-						thumbsize = parseInt(sizeText);
-						newthumbsize = thumbsize * 2 + 15
-						$picblock.css("grid-template-columns", newthumbsize + "px " + newthumbsize + "px")
-					}
-					
-					$(".imagediv").each(function() {
-						var $obj = $(this);
-						$obj.find("img").each(function() {
-							var $img = $(this);
-							$obj.width(newthumbsize);
-							$img.width(Math.floor(newthumbsize / thumbsize * $img.width()));
-							$img.height(Math.floor(newthumbsize / thumbsize * $img.height()));
-						});
-					});
-					$("ul#nav").css("font-size", "1.3em").css("line-height", "2.0em").css("margin-bottom", "20px");
-				}
-				else {
-					if (version=="2") {
-						$("div.picrow").each(function() {
-							var $obj = $(this);
-							var $clone = $obj.clone().empty()
-							$obj.children("div:gt(1)").detach().wrapAll($clone).parent().insertAfter($obj);
-						});
-						
-						$(".imagediv").each(function() {
-							var $obj = $(this);
-							$obj.find("img").each(function() {
-								var $img = $(this);
-								$obj.width(2 * $obj.width());
-								$img.width(2 * $img.width());
-								$img.height(2 * $img.height());
-							});
-						});
-					}
-					else {
-						$("#picblock > tbody > tr").each(function() {
-							var $obj = $(this);
-							$obj.children("td:gt(1)").detach().wrapAll("<tr></tr>").parent().insertAfter($obj);
-						});
-						$("#picblock .imageblock").each(function() {
-							var $obj = $(this);
-							$obj.width(2 * $obj.width());
-							$obj.find("img").each(function() {
-								var $img = $(this);
-								$img.width(2 * $img.width());
-								$img.height(2 * $img.height());
-							});
-						});
-					}
-					$("ul#nav").css("font-size", "1.3em").css("margin-bottom", "10px");
-				}
-			}
-			$(".journaltitle").not(".nomodify").css("font-size", "1.6em");
-			var $h1 = $("h1").not(".nomodify");
-			if ($h1 != null) {
-				var head_len = $h1.html().length;
-				if (head_len < 50) {
-					var head_size = "";
-					if (head_len > margins) { head_size = "2.5em" }
-					else if (head_len > 30) { head_size = "2.7em" }
-					else { head_size = "3.0em" }
-					$h1.css("font-size", head_size);
-				}
-			}
-			$("h1").not(".nomargin").css("margin", "10px 0 20px");
-			$(".journaltext").not(".nomodify").css("font-size", "2.2em").css("line-height", "1.2em");
-			$(".picblock").eq(".setfont").css("font-size", "2.2em");
-			$("#footer").not(".nomodify").css("font-size", "3em");
 		}
-		mobileDevice = true;
-	}
-	
-	var $h1 = $("h1").not(".nomodify");
-	if ($h1 != null) {
-		var $h1 = $("h1")
-		var head_len = $h1.html().length
-		if (head_len >= 50) {
-			var head_size = ""
-			if (head_len > 80) { head_size = "1.2em" }
-			else if (head_len > 65) { head_size = "1.5em" }
-			else { head_size = "1.9em" }
-			$h1.css("font-size", head_size)
+		
+		function updateZoom() {
+			if (contentWidth + margins > window.innerWidth) {
+				var zoom = Math.max(50, (window.innerWidth / (contentWidth + margins)) * 100);
+				document.body.style.zoom = zoom + "%";
+			} else if (document.body.style.zoom) {
+				var zoomText = document.body.style.zoom;
+				var currentZoom = parseFloat(zoomText);
+
+				if (!zoomText.endsWith("%")) {
+					currentZoom *= 100.0;
+				}
+
+				var zoomScale = window.innerWidth / (contentWidth + margins);
+				pageZoom = Math.min(maxZoom, currentZoom * zoomScale);
+
+				document.body.style.zoom = pageZoom + "%";
+			}
 		}
-	}
-
-	var prefixAWS = "http://dvk4w6qeylrn6.cloudfront.net";
-
-	$(function(){
-		function targetName(objectName) {
-			var href = document.location.href;
-			var domains = ["rickandrandy.com", "randyandrick.com", "ubillos.com", "portlandave.com", "randyubillos.com", "rickfath.com"];
-			var matched = false;
 			
-			for (var i = 0; !matched && i<domains.length; i++) {
-				matched = href.includes(domains[i]);
+		if (findID("content").getAttribute("panopage") !== null) {
+			const rows = find("#picblock > tbody > tr");
+			rows.forEach(row => {
+				const cells = Array.from(row.children).slice(1);
+				cells.forEach(cell => {
+					const newRow = document.createElement("tr");
+					newRow.appendChild(cell);
+					row.parentNode.appendChild(newRow);
+				});
+			});
+
+			const imageBlocks = find("#picblock .imageblock");
+			imageBlocks.forEach(block => {
+				block.style.width = `${4 * parseInt(block.style.width)}px`;
+
+				const headerImg = findOne("div#headerImg > img");
+				const headerWidth = headerImg ? headerImg.width : 0;
+
+				const images = block.querySelectorAll("img");
+				images.forEach(img => {
+					const aspectRatio = img.naturalHeight / img.naturalWidth;
+					img.style.width = `${headerWidth}px`;
+					img.style.height = `auto`;
+				});
+			});
+
+			panopage = true;
+		}
+		
+		if (screenWidth < 700) {
+			if (!panopage && document.body.style.display === "none") {
+				if (!findID("content").hasAttribute("norewrap")) {
+					if (version >= 3) {
+						const picblocks = find("div.picblock");
+						
+						if (picblocks.length > 0) {
+							let sizeText = getComputedStyle(picblocks[0]).gridTemplateColumns;
+							const commaIndex = sizeText.indexOf(",");
+							if (commaIndex !== -1) {
+								sizeText = sizeText.slice(commaIndex + 1);
+							}
+							
+							const thumbsize = parseInt(sizeText);
+							const newthumbsize = thumbsize * 2 + 15;
+
+							picblocks.forEach(picblock => {
+								picblock.style.gridTemplateColumns = `${newthumbsize}px ${newthumbsize}px`;
+							
+								find(".imagediv").forEach(imagediv => {
+									imagediv.querySelectorAll("img").forEach(img => {
+										imagediv.style.width = `${newthumbsize}px`;
+										img.style.width = `${Math.floor((newthumbsize / thumbsize) * img.width)}px`;
+										img.style.height = `${Math.floor((newthumbsize / thumbsize) * img.height)}px`;
+									});
+								});
+							});
+							const nav = findOne("ul#nav");
+							if (nav) {
+								nav.style.fontSize = "1.3em";
+								nav.style.lineHeight = "2.0em";
+								nav.style.marginBottom = "20px";
+							}
+						}
+					} else {
+						if (version === 2) {
+							find("div.picrow").forEach(picrow => {
+								const clone = picrow.cloneNode(false);
+								const children = Array.from(picrow.children).slice(2);
+								children.forEach(child => {
+									clone.appendChild(child);
+								});
+								picrow.parentNode.insertBefore(clone, picrow.nextSibling);
+							});
+							
+							find(".imagediv").forEach(imagediv => {
+								imagediv.querySelectorAll("img").forEach(img => {
+									imagediv.style.width = `${2 * imagediv.width}px`;
+									img.style.width = `${2 * img.width}px`;
+									img.style.height = `${2 * img.height}px`;
+								});
+							});
+						} else {
+							find("#picblock > tbody > tr").forEach(row => {
+								const newRow = document.createElement("tr");
+								const children = Array.from(row.children).slice(2);
+								children.forEach(child => {
+									newRow.appendChild(child);
+								});
+								row.parentNode.insertBefore(newRow, row.nextSibling);
+							});
+							
+							find("#picblock .imageblock").forEach(imageblock => {
+								imageblock.style.width = `${2 * parseInt(imageblock.style.width)}px`;
+								imageblock.querySelectorAll("img").forEach(img => {
+									img.style.width = `${2 * img.width}px`;
+									img.style.height = `${2 * img.height}px`;
+								});
+							});
+						}
+						const nav = findOne("ul#nav");
+						if (nav) {
+							nav.style.fontSize = "1.3em";
+							nav.style.marginBottom = "10px";
+						}
+					}
+				}
+				find(".journaltitle:not(.nomodify)").forEach(title => {
+					title.style.fontSize = "1.6em";
+				});
+				const h1 = findOne("h1:not(.nomodify)");
+				if (h1) {
+					const headLen = h1.innerHTML.length;
+					if (headLen < 50) {
+						let headSize = "";
+						if (headLen > margins) {
+							headSize = "2.5em";
+						} else if (headLen > 30) {
+							headSize = "2.7em";
+						} else {
+							headSize = "3.0em";
+						}
+						h1.style.fontSize = headSize;
+					}
+				}
+				find("h1:not(.nomargin)").forEach(h1 => {
+					h1.style.margin = "10px 0 20px";
+				});
+				find(".journaltext:not(.nomodify)").forEach(text => {
+					text.style.fontSize = "2.2em";
+					text.style.lineHeight = "1.2em";
+				});
+				find(".picblock.setfont").forEach(picblock => {
+					picblock.style.fontSize = "2.2em";
+				});
+				const footer = findOne("#footer:not(.nomodify)");
+				if (footer) {
+					footer.style.fontSize = "3em";
+				}
 			}
+			mobileDevice = true;
+		}
+		
+		var h1Elements = Array.from(find("h1:not(.nomodify)"));
+		h1Elements.forEach(function(h1) {
+			var headLen = h1.innerHTML.length;
+			if (headLen >= 50) {
+				var headSize = "";
+				if (headLen > 80) {
+					headSize = "1.2em";
+				} else if (headLen > 65) {
+					headSize = "1.5em";
+				} else {
+					headSize = "1.9em";
+				}
+				h1.style.fontSize = headSize;
+			}
+		});
+
+		let prefixAWS = "http://dvk4w6qeylrn6.cloudfront.net";
+
+		function targetName(objectName) {
+			const href = document.location.href;
+			const domains = ["rickandrandy.com", "randyandrick.com", "ubillos.com", "portlandave.com", "randyubillos.com", "rickfath.com"];
+			const matched = domains.some(domain => href.includes(domain));
+			
 			if (matched) {
 				var elements = document.location.pathname.split("/");
 				
 				elements[0] = prefixAWS;
-				elements[elements.length-1] = objectName;
+				elements[elements.length - 1] = objectName;
 				
 				objectName = elements.join("/");
 			}
 			
 			return objectName;
-		};
+		}
 
-		if (document.location.href.includes("Users/mediaserver") && $(window).width()>(contentWidth+100) && $(".sideinfo").length==0) {
-			var zoom = (Math.min(1600, $(window).width()) / (contentWidth + 100)) * 100;
-			$('body').css("zoom", zoom+"%");
+		if (document.location.href.includes("Users/mediaserver") && window.innerWidth > (contentWidth + 100) && find(".sideinfo").length === 0) {
+			var zoom = (Math.min(1600, window.innerWidth) / (contentWidth + 100)) * 100;
+			document.body.style.zoom = zoom + "%";
 		}
 		
 		const pageScale = (window.outerWidth / window.innerWidth) * window.devicePixelRatio * pageZoom / 100.0;
 		const folder_scales = [1, 2, 3, 4, 6, 8, 12];
 		
-		function srcSetError() {
-			const $img = $(this);
-			let srcSet = $img.attr('srcset').split(', ');
+		function srcSetError(event) {
+			const img = event.target;
+			let srcSet = img.getAttribute('srcset').split(', ');
 			if (srcSet.length > 1) {
 				srcSet.pop();
-				$img.attr('srcset', srcSet.join(', '));
+				img.setAttribute('srcset', srcSet.join(', '));
 			}
 		}
 
-		const singleSrc = $("#picblock,td.sideinfo").length > 0;
+		const singleSrc = findOne("#picblock") || findOne("td.sideinfo");
 
-		$("img").each(function() {
-			var $img = $(this);
-			
-			if ($img.attr("srcset") == null && $img.attr("filename") != null){
-				var filename = $img.attr("filename");
-				var parts = filename.split('?')
+		find("img").forEach(function(img) {
+			if (!img.hasAttribute("srcset") && img.hasAttribute("filename") && img.getAttribute("filename") !== "") {
+				let filename = img.getAttribute("filename");
+				let parts = filename.split('?');
 				parts[0] = encodeURIComponent(parts[0]);
-				var encodedName = parts.join('?')
-				let width = this.width;
-				
-				$img.on('error', srcSetError);
+				let encodedName = parts.join('?');
+				let width = img.width;
 
-				if (filename.indexOf("Placed Image")==0 || filename.indexOf("headers")==0) {
-					if (filename.indexOf("headers") == 0) {
+				img.addEventListener('error', srcSetError);
+
+				if (filename.startsWith("Placed Image") || filename.startsWith("headers")) {
+					if (filename.startsWith("headers")) {
 						encodedName = filename;
 					}
 					let sizes = 3;
-					if ($img.attr("sizes") != null) {
-						sizes = parseInt($img.attr("sizes"));
+					if (img.hasAttribute("sizes")) {
+						sizes = parseInt(img.getAttribute("sizes"));
 					}
-					if (width == 0) {
+					if (width === 0) {
 						width = 800;
 					}
 					let srcSet = `${encodedName} ${width}w`;
 					for (let i = 2; i <= sizes; i++) {
-						let scale = folder_scales[i-1];
-						srcSet += `, ${encodedName.replace('.', `@${scale}x.`)} ${width*scale}w`;
+						let scale = folder_scales[i - 1];
+						srcSet += `, ${encodedName.replace('.', `@${scale}x.`)} ${width * scale}w`;
 					}
-					$img.attr("srcset", srcSet);
-					$img.attr("filename", null);
-					$img.attr("src", null);
-				}
-				else {
-					if ($img.attr("singlethumb") != null) {
-						$img.attr("src", "thumbnails/" + encodedName);
-					}
-					else {
-						if (width == 0) {
+					img.setAttribute("srcset", srcSet);
+					img.removeAttribute("filename");
+					img.removeAttribute("src");
+				} else {
+					if (img.hasAttribute("singlethumb")) {
+						img.setAttribute("src", "thumbnails/" + encodedName);
+					} else {
+						if (width === 0) {
 							width = 200;
 						}
-						let srcSet = `thumbnails/${encodedName} ${width}w, thumbnails@2x/${encodedName} ${width*2}w, thumbnails@3x/${encodedName} ${width*3}w`;
-						
-						if (pageScale > 3) {
+						let srcSet = `thumbnails/${encodedName} ${width}w, thumbnails@2x/${encodedName} ${width * 2}w, thumbnails@3x/${encodedName} ${width * 3}w`;
+
+						if (pageScale >= 3) {
 							const picName = encodedName.replace("thumb", "picture");
 							srcSet = `${srcSet}, pictures/${picName} 1024w`;
-							if (pageScale > 6) {
+							if (pageScale >= 6) {
 								srcSet = `${srcSet}, pictures@2x/${picName} 2048w`;
 							}
 						}
-						$img.attr("srcset", srcSet);
-						$img.attr("src", null);
+						img.setAttribute("srcset", srcSet);
+						img.removeAttribute("src");
 					}
 				}
-			}
-			else if (singleSrc && $img.attr("srcset") == null) {
-				const src = $img.attr('src');
-				if (src.indexOf("Placed Image")==-1) {
-					$img.on('error', srcSetError);
-					const width = this.width;
+			} else if (singleSrc && !img.hasAttribute("srcset")) {
+				const src = img.getAttribute('src');
+				if (!src.startsWith("Placed Image")) {
+					img.addEventListener('error', srcSetError);
+					const width = img.width;
 					const src2 = src.replace("thumbnails", "pictures").replace("thumb", "picture");
-					$img.attr('srcset', `${src} ${width}w, ${src2} 1024w`);
-					$img.attr("src", null);
+					img.setAttribute('srcset', `${src} ${width}w, ${src2} 1024w`);
+					img.removeAttribute("src");
 				}
 			}
 		});
 		
-		var thumbnailTimeout = 2 * 60;
+		let thumbnailTimeout = 2 * 60;
 		window.timeoutKey = null;
 		window.thumbnailsPaused = false;
 	    window.isActive = true;
 		
 		function pauseThumbnails() {
 			if (!window.thumbnailsPaused) {
-				$("video").each(function() {
-					if ($(this).attr("src") != null) {
-						this.pause();
+				find("video").forEach(video => {
+					if (video.getAttribute("isthumbnail") && video.getAttribute("src") !== null) {
+						video.pause();
 					}
 				});
 				window.thumbnailsPaused = true;
 			}
 			window.timeoutKey = null;
-		};
+		}
 
 		function clearQueuedPause() {
-			if (window.timeoutKey != null) {
+			if (window.timeoutKey !== null) {
 				clearTimeout(window.timeoutKey);
 				window.timeoutKey = null;
 			}
@@ -341,9 +384,9 @@ if (indexPageLoaded == null) {
 		
 		function restartThumbnails() {
 			if (window.thumbnailsPaused) {
-				$("video").each(function() {
-					if ($(this).attr("src") != null && this.paused) {
-						this.play();
+				find("video").forEach(video => {
+					if (video.getAttribute("isthumbnail") && video.getAttribute("src") !== null && video.paused) {
+						video.play();
 					}
 				});
 				window.thumbnailsPaused = false;
@@ -358,370 +401,407 @@ if (indexPageLoaded == null) {
 			}
 		};
 		
-		$(window).focus(function() {
-			if (!this.isActive) {
-				this.isActive = true;
+		window.addEventListener("focus", function() {
+			if (!window.isActive) {
+				window.isActive = true;
 				updateThumbnailTimeout();
 			}
-		}).blur(function() {
-			if (this.isActive) {
-				this.isActive = false;
+		});
+
+		window.addEventListener("blur", function() {
+			if (window.isActive) {
+				window.isActive = false;
 				clearQueuedPause();
 				pauseThumbnails();
 			}
-		}).mousemove(function() {
+		});
+
+		window.addEventListener("mousemove", function() {
 			updateThumbnailTimeout();
 		});
 
 		function updateVisibility(vid) {
-			var $img = vid.img;
-			var $vidElem = vid.video;
-			var visibleBounds = $img[0].getBoundingClientRect();
+			var img = vid.img;
+			var videoElem = vid.video;
+			var visibleBounds = img.getBoundingClientRect();
 			var visible = visibleBounds.bottom > 0 && visibleBounds.top < window.innerHeight;
-			var key = (visible) ? "yes" : "no";
-						
-			if (key != $vidElem.attr('shown')) {
+			var key = visible ? "yes" : "no";
+
+			if (key !== videoElem.getAttribute('shown')) {
 				if (visible) {
 					if (window.thumbnailsPaused) {
-						$vidElem.attr("autoplay", (window.thumbnailsPaused) ? null : true);
+						videoElem.setAttribute("autoplay", window.thumbnailsPaused ? null : true);
 					}
-					$vidElem.attr('src', $vidElem.attr('path'));
-					$vidElem.css('display', 'inline');
+					videoElem.setAttribute('src', videoElem.getAttribute('path'));
+					videoElem.style.display = 'inline';
+				} else {
+					videoElem.style.display = 'none';
+					videoElem.removeAttribute('src');
 				}
-				else {
-					$vidElem.css('display', 'none');
-					$vidElem.attr('src', null);
-				}
-				$vidElem.attr('shown', key);
+				videoElem.setAttribute('shown', key);
 			}
-			
+
 			return visible;
-		};
-				
+		}
+
 		function updateAllVisibility() {
 			var count = 0;
-			
+
 			window.scrollKey = null;
-			
+
 			videoElements.forEach(function(vid) {
 				count += updateVisibility(vid);
 			});
 		}
 
-		var pageNumberIndex = 0;
-		var standardMovieIndex = 4;
-		var HDMovieIndex = 5;
-		var smallMovieIndex = 6;
-		var thumbnailMovieIndex = 8;
-		var fourKMovieIndex = 9;
+		const pageNumberIndex = 0;
+		const standardMovieIndex = 4;
+		const HDMovieIndex = 5;
+		const smallMovieIndex = 6;
+		const thumbnailMovieIndex = 8;
+		const fourKMovieIndex = 9;
 			
-		var $playImg;
+		let playImg;
 
 		function addPlay(event) {
-			if ($playImg.parent().length == 0) {
-				var $obj = $(this);
-				var $video = $obj.find("video");
-				var vidWidth = $video.width();
-				var vidLeft = parseInt($video.css("left"));
-				
-				$playImg.css('left', (vidLeft+((vidWidth-60) / 2))+"px");
-				$playImg.css('top', (($video.attr('height')-60) / 2)+"px");
-				$playImg.appendTo($(this));
+			if (!playImg.parentElement) {
+				const obj = event.currentTarget;
+				const video = obj.querySelector("video");
+				const vidWidth = video.offsetWidth;
+				const vidLeft = parseInt(window.getComputedStyle(video).left, 10);
+
+				playImg.style.left = `${vidLeft + ((vidWidth - 60) / 2)}px`;
+				playImg.style.top = `${(video.offsetHeight - 60) / 2}px`;
+				obj.appendChild(playImg);
 			}
 			return true;
-		};
-		
+		}
+
 		function removePlay(event) {
-			$playImg.detach();
+			if (playImg && playImg.parentElement) {
+				playImg.parentElement.removeChild(playImg);
+			}
 			return true;
-		};
-		
-		function addVideoThumbnail($img, movieInfo, rootPrefix, thumbPrefix) {
-			var $aObj = $img.parent();
-			var $dtObj = $aObj.parent();
-			
-			if (!mobileDevice && ($dtObj !== null) && ($dtObj.length>0) && (movieInfo.length > thumbnailMovieIndex) && (movieInfo[thumbnailMovieIndex].length>0)) {
-				var $newVideo = $("<video style='display:none; position:absolute; left:0; top:0' muted loop autoplay></video>");
-				
-				$newVideo.attr("width", $img.attr("width"));
-				$newVideo.attr("height", $img.attr("height"));
-				$newVideo.attr("poster", $img.attr("src"));
-				
-				var offset = 0;
-				var imgWidth = $img.attr("width");
-				var thumbWidth = $dtObj.width();
-				if (imgWidth != thumbWidth) {
+		}
+
+		function addVideoThumbnail(img, movieInfo, rootPrefix, thumbPrefix) {
+			const aObj = img.parentElement;
+			const dtObj = aObj.parentElement;
+
+			if (!mobileDevice && dtObj && movieInfo.length > thumbnailMovieIndex && movieInfo[thumbnailMovieIndex].length > 0) {
+				const newVideo = document.createElement("video");
+				newVideo.style.display = "none";
+				newVideo.style.position = "absolute";
+				newVideo.style.left = "0";
+				newVideo.style.top = "0";
+				newVideo.muted = true;
+				newVideo.loop = true;
+				newVideo.autoplay = true;
+				newVideo.setAttribute("isthumbnail", "true");
+
+				newVideo.width = img.width;
+				newVideo.height = img.height;
+				newVideo.poster = img.src;
+
+				let offset = 0;
+				const imgWidth = img.width;
+				const thumbWidth = dtObj.offsetWidth;
+				if (imgWidth !== thumbWidth) {
 					offset = Math.max(0, Math.floor((thumbWidth - imgWidth) / 2));
-					$newVideo.css("left", offset);
+					newVideo.style.left = `${offset}px`;
 				}
 
-				var thumbName = movieInfo[thumbnailMovieIndex];
-				
+				let thumbName = movieInfo[thumbnailMovieIndex];
 				if (thumbName.length < 3) {
 					thumbName = movieInfo[standardMovieIndex].split(",")[2].replace("-HEVC", "");
-					
+
 					if (thumbName.search(/(.*? ?- ?)\d{3,4}p\d{2}\..{3}/g) >= 0) {
 						thumbName = thumbName.replace(/(.*? ?- ?)\d{3,4}p\d{2}\..{3}/g, "$1Thumbnail.m4v");
-					}
-					else {
+					} else {
 						thumbName = thumbName.replace(/(.*?)\..{3}/g, "$1-Thumbnail.m4v");
 					}
 				}
-				
+
 				thumbName = thumbPrefix + thumbName;
 				thumbName = targetName(thumbName);
-				
-				$newVideo.attr("path", thumbName);
-				$dtObj.css({ 'position': 'relative' });
-				if (!$dtObj.hasClass("nomodify")) {
-					$dtObj.css({ 'border-color': 'white', 'border-style': 'solid', 'border-width': '5px', 'margin': '-5px '});
+
+				newVideo.setAttribute("path", thumbName);
+				dtObj.style.position = "relative";
+				if (!dtObj.classList.contains("nomodify")) {
+					dtObj.style.borderColor = "white";
+					dtObj.style.borderStyle = "solid";
+					dtObj.style.borderWidth = "5px";
+					dtObj.style.margin = "-5px";
 				}
-				$dtObj.attr("height", $img.attr("height"));
-				$newVideo.appendTo($aObj);
-				
-				if ($playImg == null) {
-					$playImg = $("<img src='"+rootPrefix+"play.png' width=60 height=60 style='position:absolute; left: 65px; top: 23px; border-width:0;'>");
+				dtObj.setAttribute("height", img.height);
+				aObj.appendChild(newVideo);
+
+				if (!playImg) {
+					playImg = document.createElement("img");
+					playImg.src = `${rootPrefix}play.png`;
+					playImg.width = 60;
+					playImg.height = 60;
+					playImg.style.position = "absolute";
+					playImg.style.left = "65px";
+					playImg.style.top = "23px";
+					playImg.style.borderWidth = "0";
 				}
-								
-				$aObj.on("touchstart mouseenter", addPlay);
-				$aObj.on("mouseleave touchmove click", removePlay);
-				
-				var package = { 'video': $newVideo, 'img' : $img };
+
+				aObj.addEventListener("touchstart", addPlay);
+				aObj.addEventListener("mouseenter", addPlay);
+				aObj.addEventListener("mouseleave", removePlay);
+				aObj.addEventListener("touchmove", removePlay);
+				aObj.addEventListener("click", removePlay);
+
+				const package = { video: newVideo, img: img };
 				updateVisibility(package);
 				videoElements.push(package);
 			}
-		};
+		}
 	
-		$.get( "movies.txt", function(data) {
-			var movieRows = data.splitLines();
-			var moviePages = {};
-	
-			for (var i=1; i<movieRows.length; i++) {
-				var itemInfo = movieRows[i].split("\t");
-				
-				if (itemInfo.length>standardMovieIndex) {
-					moviePages[itemInfo[pageNumberIndex]] = itemInfo;
-				}
-			}
+		fetch("movies.txt")
+			.then(response => response.text())
+			.then(data => {
+				const movieRows = data.splitLines();
+				const moviePages = {};
 
-			var assetRoot = $("body").attr("assetroot");
-			if (assetRoot == null) {
-				assetRoot = "../../FrontPageGraphics/";
-			}
-			
-			$("img").each(function() {
-				var $img = $(this);
-				
-				if ($img.attr("filename") != null) {
-					var $hrefObj = $img.parent();
-					var hrefPath = $hrefObj.attr("href");
-					var pageNumber = findPageNumber(hrefPath);
-					var movieInfo = moviePages[pageNumber];
-					
-					if (movieInfo != null) {
-						var $captionObj = null;
-						
-						if (version == 3) {
-							$captionObj = $hrefObj.parent().find("p.imagelabel");
-						}
-						else {
-							$captionObj = $hrefObj.parent().parent().find("li");
-						}
-						
-						if ($captionObj ==null || $captionObj.length==0) {
-							$captionObj = $hrefObj.parent().parent().find("p.imagelabel");
-						}
-						
-						if ($captionObj !== null && $captionObj.length>0) {
-							var title = $captionObj.html().trim();
-							var newHTML = '<a href="#href"><strong>#title</strong></a>';
-							var hasHD = (movieInfo.length > HDMovieIndex) && (movieInfo[HDMovieIndex].length > 0);
-							var has4K = (movieInfo.length > fourKMovieIndex) && (movieInfo[fourKMovieIndex].length > 0);
-							var hdString = "";
+				for (let i = 1; i < movieRows.length; i++) {
+					const itemInfo = movieRows[i].split("\t");
 
-							if ((document.location.search.length <= 1) && hasHD) {
-								hdString = "<span style='text-decoration:underline;'><a href='#href?HD'>HD</a></span>";
-							}
-							if ((document.location.search.length <= 1) && has4K) {
-								if (hdString.length > 0) {
-									hdString = hdString + "&nbsp;&nbsp;";
-								}
-								hdString = hdString + "<span style='text-decoration:underline;'><a href='#href?4K'>4K</a></span>";
-							}
-							
-							if (hdString.length > 0) {
-								newHTML = '<div style="display:flex; justify-content:space-between;">' + newHTML +'<div style="flex-grow:1;"></div>' + hdString + '</div>';
-							}
-					
-							newHTML = newHTML.split("#href").join(hrefPath);
-							newHTML = newHTML.split("#title").join(title);
-							$captionObj.html(newHTML);
-						}
-						addVideoThumbnail($img, movieInfo, assetRoot, "");
+					if (itemInfo.length > standardMovieIndex) {
+						moviePages[itemInfo[pageNumberIndex]] = itemInfo;
 					}
 				}
-			});
-						
-			updateThumbnailTimeout();
 
-			if ("ontouchstart" in document.documentElement) {
-		 		$("a,#headerImg,li.pagnation,li.previous,li.next").css("touch-action", "manipulation");
+				let assetRoot = document.body.getAttribute("assetroot");
+				if (!assetRoot) {
+					assetRoot = "../../FrontPageGraphics/";
+				}
+
+				find("img").forEach(img => {
+					if (img.hasAttribute("filename")) {
+						const hrefObj = img.parentElement;
+						const hrefPath = hrefObj.getAttribute("href");
+						const pageNumber = findPageNumber(hrefPath);
+						const movieInfo = moviePages[pageNumber];
+
+						if (movieInfo) {
+							let captionObj = null;
+
+							if (version === 3) {
+								captionObj = hrefObj.parentElement.querySelector("p.imagelabel");
+							} else {
+								captionObj = hrefObj.parentElement.parentElement.querySelector("li");
+							}
+
+							if (!captionObj) {
+								captionObj = hrefObj.parentElement.parentElement.querySelector("p.imagelabel");
+							}
+
+							if (captionObj) {
+								const title = captionObj.innerHTML.trim();
+								let newHTML = `<a href="${hrefPath}"><strong>${title}</strong></a>`;
+								const hasHD = movieInfo.length > HDMovieIndex && movieInfo[HDMovieIndex].length > 0;
+								const has4K = movieInfo.length > fourKMovieIndex && movieInfo[fourKMovieIndex].length > 0;
+								let hdString = "";
+
+								if (document.location.search.length <= 1 && hasHD) {
+									hdString = `<span style="text-decoration:underline;"><a href="${hrefPath}?HD">HD</a></span>`;
+								}
+								if (document.location.search.length <= 1 && has4K) {
+									if (hdString.length > 0) {
+										hdString += "&nbsp;&nbsp;";
+									}
+									hdString += `<span style="text-decoration:underline;"><a href="${hrefPath}?4K">4K</a></span>`;
+								}
+
+								if (hdString.length > 0) {
+									newHTML = `<div style="display:flex; justify-content:space-between;">${newHTML}<div style="flex-grow:1;"></div>${hdString}</div>`;
+								}
+
+								captionObj.innerHTML = newHTML;
+							}
+							addVideoThumbnail(img, movieInfo, assetRoot, "");
+						}
+					}
+				});
+
+				updateThumbnailTimeout();
+
+				if ("ontouchstart" in document.documentElement) {
+					find("a, #headerImg, li.pagnation, li.previous, li.next").forEach(el => {
+						el.style.touchAction = "manipulation";
+					});
+				}
+			});
+		
+		const nav = findOne("ul#nav");
+		if (nav && nav.children.length <= 2) {
+			nav.remove();
+		}
+
+		find(".previous").forEach(el => el.setAttribute("title", "Previous (left arrow)"));
+		find(".next").forEach(el => el.setAttribute("title", "Next (right arrow)"));
+
+		find("#footer > p, #footer > li").forEach(el => {
+			if (!el.querySelector("a")) {
+				const link = document.createElement("a");
+				link.href = "../../index.html";
+				link.innerHTML = el.innerHTML;
+				el.innerHTML = "";
+				el.appendChild(link);
 			}
 		});
-		
-		var $nav = $("ul#nav");
-		if ($nav.children().length <= 2) {
-			$nav.remove();
-		}
-	
-		$(".previous").attr("title", "Previous (left arrow)");
-		$(".next").attr("title", "Next (right arrow)");
-		
-		$("#footer > p,#footer > li").not("a").wrapInner('<a href="../../index.html"></a>');
 
-		function handleNavClick() {
-			window.event.preventDefault();
-			var $a = $(this).find("a");
-			if ($a.length > 0) {
-				document.location.href = $a.attr("href");
+		function handleNavClick(event) {
+			event.preventDefault();
+			const link = this.querySelector("a");
+			if (link) {
+				window.location.href = link.getAttribute("href");
 			}
 		}
-		
-		$("li.pagnation,li.previous,li.next").css("cursor", "pointer").click(handleNavClick);
-		$("li.previous").not(".nomodify").css("height", "100%");
-		$("li.next").not(".nomodify").css("height", "100%");
-	
-		$("body").css("display", "inline");
-		
-		var hashRef = document.location.hash.substring(1);
-		
+
+		find("li.pagnation, li.previous, li.next").forEach(el => {
+			el.style.cursor = "pointer";
+			el.addEventListener("click", handleNavClick);
+		});
+
+		find("li.previous:not(.nomodify), li.next:not(.nomodify)").forEach(el => {
+			el.style.height = "100%";
+		});
+
+		document.body.style.display = "inline";
+
+		const hashRef = document.location.hash.substring(1);
 		if (hashRef.length > 0) {
-			$(".imagecell, .imagediv").find("a[href='"+hashRef+"']").each(function() {
-				window.scrollTo(0, this.getBoundingClientRect().top  - window.innerHeight/2);
-			});
-		}
-			
-		if (document.location.search.length > 1) {
-			$("#nav > li > a,.imagecell > a").attr("href", function(i, href) {
-				return href + document.location.search;
+			find(`.imagecell a[href='${hashRef}'], .imagediv a[href='${hashRef}']`).forEach(el => {
+				window.scrollTo(0, el.getBoundingClientRect().top - window.innerHeight / 2);
 			});
 		}
 
-		$("#headerImg").mousedown(function(e) {
-			var leftSide = e.offsetX < ($(this).width() * 0.2);
-			var $numberElement = $(leftSide ? "#previous, .previous" : "#next,.next").find("a");
-	
-			if ($numberElement.length>0) {
-				document.location.href = $numberElement.attr("href");
-			}
-		});
-		
-		if (version < 2 && $("a:contains('Next Page')").length == 0) {
-			var $nextElement = $("#next,.next").find("a");
-	
-			if ($nextElement.length>0) {
-				$nextLink = $('<div class="journaltext" style="width: ' + (contentWidth+10) + 'px;"><p align="right" class="copy"><a href="'+$nextElement.attr("href")+'">Next Page</a></p></div>');
-				$nextLink.insertBefore($("#footer"));
+		if (document.location.search.length > 1) {
+			find("#nav > li > a, .imagecell > a").forEach(el => {
+				el.href += document.location.search;
+			});
+		}
+
+		const headerImg = findOne("#headerImg");
+		if (headerImg) {
+			headerImg.addEventListener("mousedown", function (e) {
+				const leftSide = e.offsetX < (this.offsetWidth * 0.2);
+				const target = findOne(leftSide ? "#previous a, .previous a" : "#next > a, .next a");
+				if (target) {
+					window.location.href = target.getAttribute("href");
+				}
+			});
+		}
+
+		if (version < 2 && !Array.from(document.querySelectorAll("a")).some(a => a.textContent.includes("Next Page"))) {
+			const nextElement = findOne("#next a, .next a");
+			if (nextElement) {
+				const nextLink = document.createElement("div");
+				nextLink.className = "journaltext";
+				nextLink.style.width = (contentWidth + 10) + "px";
+				nextLink.innerHTML = `<p align="right" class="copy"><a href="${nextElement.getAttribute("href")}">Next Page</a></p>`;
+				const footer = findOne("#footer");
+				if (footer) {
+					footer.parentNode.insertBefore(nextLink, footer);
+				}
 			}
 		}
 		
 		function findPageNumber(path) {
-			var pageCount = ($nav != null && $nav.length>0) ? $nav.children().length - 2 : 1;
-			var currentPageNumber = 1;
-			
-			if (path == null) {
+			const nav = findOne("#nav");
+			const pageCount = (nav && nav.children.length > 0) ? nav.children.length - 2 : 1;
+			let currentPageNumber = 1;
+
+			if (!path) {
 				path = document.location.pathname;
 			}
-			
-			var lastSegment = path.substring(path.lastIndexOf("/")+1, path.lastIndexOf("."));
-			
-			if (path.indexOf("indexlast")!=-1) {
+
+			const lastSegment = path.substring(path.lastIndexOf("/") + 1, path.lastIndexOf("."));
+
+			if (path.includes("indexlast")) {
 				currentPageNumber = pageCount;
-			}
-			else {
-				var digitIndex = lastSegment.search(/\d/);
-				
-				if (digitIndex >=0) {
+			} else {
+				const digitIndex = lastSegment.search(/\d/);
+
+				if (digitIndex >= 0) {
 					currentPageNumber = parseInt(lastSegment.substr(digitIndex), 10);
 				}
 			}
-			
-			return(currentPageNumber);
+
+			return currentPageNumber;
 		}
-	
-		var $nav = $("#nav");
-		var pageCount = ($nav != null && $nav.length>0) ? $nav.children().length - 2 : 0;
-		var currentPageNumber = findPageNumber();
-		
+
+		const nav2 = findOne("#nav");
+		const pageCount = (nav2 && nav2.children.length > 0) ? nav2.children.length - 2 : 0;
+		const currentPageNumber = findPageNumber();
+
 		window.scrollKey = null;
-	
+
 		function visibilityCheck() {
 			updateThumbnailTimeout();
-			if (window.scrollKey != null) {
-		    	clearTimeout(window.scrollKey);
+			if (window.scrollKey !== null) {
+				clearTimeout(window.scrollKey);
 			}
-		    window.scrollKey = setTimeout(updateAllVisibility, 100);
+			window.scrollKey = setTimeout(updateAllVisibility, 100);
 		}
-		
-		$(document).scroll(visibilityCheck);
-		$(window).resize(visibilityCheck);
+
+		document.addEventListener("scroll", visibilityCheck);
+		window.addEventListener("resize", visibilityCheck);
 				
-		$(document).keydown(function(event) {
+		document.addEventListener("keydown", function(event) {
 			function scrolledToBottom() {
-				return ($(window).scrollTop() + $(window).height() + 10 >= $(document).height());
+				return (window.scrollY + window.innerHeight + 10 >= document.documentElement.scrollHeight);
 			}
-	
-			var handled = true;
-			var newPageNumber = currentPageNumber;
-			var $nextPageLink = $("#nextpagelink");
-			
-			switch (event.which) {
-				case 33:	/* page up */
-				case 37:	/* left */
-				case 38:	/* up */
-					if (newPageNumber>1) {
+
+			let handled = true;
+			let newPageNumber = currentPageNumber;
+			const nextPageLink = findID("nextpagelink");
+
+			switch (event.key) {
+				case "PageUp": /* page up */
+				case "ArrowLeft": /* left */
+				case "ArrowUp": /* up */
+					if (newPageNumber > 1) {
 						newPageNumber--;
-					}
-					else {
-						newPageNumber = - 3;
+					} else {
+						newPageNumber = -3;
 					}
 					break;
-				case 34:	/* page down */
-				case 39:	/* right */
-				case 40: 	/* down */
-					if (newPageNumber<pageCount) {
+				case "PageDown": /* page down */
+				case "ArrowRight": /* right */
+				case "ArrowDown": /* down */
+					if (newPageNumber < pageCount) {
 						newPageNumber++;
-					}
-					else {
+					} else {
 						newPageNumber = -2;
 					}
 					break;
-				case 73:	/* i */
+				case "i": /* i */
 					if (!event.altKey && !event.shiftKey && !event.ctrlKey) {
 						newPageNumber = -1;
 					} else {
 						handled = false;
 					}
 					break;
-				case 32:	/* spacebar */
-					if (scrolledToBottom() && (newPageNumber < pageCount || $nextPageLink != undefined) && $("#video,#movie1,#movie2").length==0) {
+				case " ": /* spacebar */
+					if (scrolledToBottom() && (newPageNumber < pageCount || nextPageLink) && !findOne("#video,#movie1,#movie2")) {
 						newPageNumber++;
-					} 
-					else if (scrolledToBottom() && pageCount <= 1 && $("#video,#movie1,#movie2").length==0) {
-						$("html, body").animate({ scrollTop: 0 }, "slow");
-					} 
-					else {
+					} else if (scrolledToBottom() && pageCount <= 1 && !findOne("#video,#movie1,#movie2")) {
+						window.scrollTo({ top: 0, behavior: "smooth" });
+					} else {
 						handled = false;
 					}
 					break;
-				case 66:	/* stop-start, B */
-				case 80:	/* p */
-				case 9: 	/* tab */
+				case "b": /* stop-start, B */
+				case "p": /* p */
+				case "Tab": /* tab */
 					if (!event.altKey && !event.shiftKey && !event.ctrlKey) {
-						var $photos = $(".imagecell > a, .imagediv > a, .imagediv > > a");
-						
-						if ($photos.length > 0) {
-							document.location.href = $photos.attr('href');
+						const photos = findOne(".imagecell > a, .imagediv > a, .imagediv > * > a");
+						if (photos) {
+							window.location.href = photos.getAttribute('href');
 						}
 					}
 					break;
@@ -729,45 +809,34 @@ if (indexPageLoaded == null) {
 					handled = false;
 					break;
 			}
-		
+
 			if (handled) {
 				event.preventDefault();
-				
-				if (newPageNumber != currentPageNumber) {
-					var newRef = "index";
-					
-					if (newPageNumber==pageCount && $nextPageLink != undefined && $nextPageLink.length>0) {
-						newRef = $nextPageLink.attr("href");
+
+				if (newPageNumber !== currentPageNumber) {
+					let newRef = "index";
+
+					if (newPageNumber === pageCount && nextPageLink) {
+						newRef = nextPageLink.getAttribute("href");
+					} else if (newPageNumber === -2 || newPageNumber > pageCount) {
+						newRef = nextPageLink ? nextPageLink.getAttribute("href") : "";
+					} else if (newPageNumber === -3) {
+						const previousPageLink = findID("previouspagelink");
+						newRef = previousPageLink ? previousPageLink.getAttribute("href") : "";
+					} else if (newPageNumber > 1) {
+						newRef = `${newRef}${newPageNumber}.html`;
+					} else if (newPageNumber === -1) {
+						newRef = `../../${newRef}.html`;
+					} else {
+						newRef = `${newRef}.html`;
 					}
-					else if (newPageNumber == -2 || newPageNumber > pageCount) {
-						newRef = "";
-						if ($nextPageLink != undefined && $nextPageLink.length>0) {
-							newRef = $nextPageLink.attr("href");
-						}
+
+					if (document.location.search.length > 1 && newPageNumber !== -1) {
+						newRef += document.location.search;
 					}
-					else if (newPageNumber == -3) {
-						var $previousPageLink = $("#previouspagelink");
-						newRef = "";
-						if ($previousPageLink != undefined) {
-							newRef = $previousPageLink.attr("href");
-						}
-					}
-					else if (newPageNumber > 1) {
-						newRef = newRef + newPageNumber + ".html";
-					}
-					else if (newPageNumber == -1) {
-						newRef = "../../" + newRef + ".html";
-					}
-					else {
-						newRef = newRef + ".html";
-					}
-					
-					if (document.location.search.length > 1 && newPageNumber != -1) {
-						newRef = newRef + document.location.search;
-					}
-					
-					if (newRef != undefined && newRef.length > 0) {
-						document.location.href = newRef;
+
+					if (newRef) {
+						window.location.href = newRef;
 					}
 				}
 			}

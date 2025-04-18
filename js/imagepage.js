@@ -3,6 +3,24 @@ var imagePageLoaded;
 if (imagePageLoaded == null) {
 	imagePageLoaded = true;
 
+	function findID(id) {
+		return document.getElementById(id);
+	}
+	
+	function find(selector) {
+		return document.querySelectorAll(selector);
+	}
+	
+	function findOne(selector) {
+		return document.querySelector(selector);
+	}
+	
+	function setClick(element, func) {
+		if (element) {
+			element.onclick = func;
+		}
+	}
+
 	var root = (typeof exports === 'undefined' ? window : exports);
 	var mobileDevice = (screen.width < 700);
 	
@@ -12,7 +30,7 @@ if (imagePageLoaded == null) {
 	}
 	document.title = newTitle;
 
-	$(function(){
+	document.addEventListener("DOMContentLoaded", function() {
 		function removeSearch(string) {
 			var lastPosition = string.lastIndexOf("?");
 			if (lastPosition === -1) return string;
@@ -57,110 +75,137 @@ if (imagePageLoaded == null) {
 		}
 
 		function addDownloadLink(imageName) {
-			if ($("body").hasClass("nodownload")) {
+			if (document.body.classList.contains("nodownload")) {
 				return;
 			}
 
-			var iconSize = 32;
-			var top = 3;
-			var $current = $("div#current");
-			var $colorElement = $current;
-			
-			if ($current.length == 0 || $colorElement.length==0) {
-				$current = $("ul#nav");
-				$colorElement = $("li.index");
+			let iconSize = 32;
+			let top = 3;
+			let current = findOne("div#current");
+			let colorElement = current;
+
+			if (!current || !colorElement) {
+				current = findOne("ul#nav");
+				colorElement = findOne("li.index");
 				iconSize = 16;
 				top = 1;
 			}
-			if ($current.length == 0 || $colorElement.length==0) {
-				$current = $("ul#nav");
-				$colorElement = $("li.pagenumber");
+			if (!current || !colorElement) {
+				current = findOne("ul#nav");
+				colorElement = findOne("li.pagenumber");
 				iconSize = 32;
 				top = 10;
 			}
-			
-			if ($current.length && $colorElement.length) {
-				var textGray = colorToGray($colorElement.css("color"));
-				var invert = colorToGray($("body").css("backgroundColor")) < 0.3;
-				var opacity = (invert) ? textGray : 1.0 - textGray;
-				var baseURL = getBaseURL();
-				var currentPath = window.location.href.replace(baseURL, "");
-				
-				currentPath = currentPath.substring(0, currentPath.lastIndexOf("/"))
-				
-				var iconPath = baseURL + "FrontPageGraphics/download.png";
-				var phpPath = baseURL + "download/download.php";
-				
-				var $download = $('<a id="downlink" href="'+phpPath+'?file=' + imageName + '&path=' + currentPath + '"><img id="download" src="'+iconPath+'" width="'+iconSize+'" height="'+iconSize+'" style="position: relative; top:'+top+'px; padding-left:'+iconSize+'px; opacity: ' + opacity + '; background-color: transparent;" title="Download Full Image"></a>');
-				
+
+			if (current && colorElement) {
+				const textGray = colorToGray(getComputedStyle(colorElement).color);
+				const invert = colorToGray(getComputedStyle(document.body).backgroundColor) < 0.3;
+				const opacity = invert ? textGray : 1.0 - textGray;
+				const baseURL = getBaseURL();
+				let currentPath = window.location.href.replace(baseURL, "");
+
+				currentPath = currentPath.substring(0, currentPath.lastIndexOf("/"));
+
+				const iconPath = `${baseURL}FrontPageGraphics/download.png`;
+				const phpPath = `${baseURL}download/download.php`;
+
+				let download = document.createElement("a");
+				download.id = "downlink";
+				download.href = `${phpPath}?file=${imageName}&path=${currentPath}`;
+				download.title = "Download Full Image";
+
+				const img = document.createElement("img");
+				img.id = "download";
+				img.src = iconPath;
+				img.width = iconSize;
+				img.height = iconSize;
+				img.style.position = "relative";
+				img.style.top = `${top}px`;
+				img.style.paddingLeft = `${iconSize}px`;
+				img.style.opacity = opacity;
+				img.style.backgroundColor = "transparent";
+
 				if (invert) {
-					$download.css("-webkit-filter", "invert(1)");
-					$download.css("filter", "invert(1)");
+					img.style.filter = "invert(1)";
 				}
-				
-				$("#downlink").remove();
-				$current.append($download);
-				
+
+				download.appendChild(img);
+
+				const existingDownload = findOne("#downlink");
+				if (existingDownload) {
+					existingDownload.onclick = null;
+					existingDownload.remove();
+				}
+
+				current.appendChild(download);
+				download = null;
+
 				if (canFullscreenImage()) {
-					$current.click(function() {
-						fullscreenImage();
-					});
-					$current.css("cursor", "pointer");
+					setClick(current, fullscreenImage);
+					current.style.cursor = "pointer";
 				}
 			}
 		}
 		
-		const $img = imageObj();
-		if ($img.length > 0) {
-			$img[0].onload = function() {
-				const curSrc = $img[0].currentSrc;
+		const img = imageObj();
+		if (img) {
+			img.onload = function() {
+				const curSrc = img.currentSrc;
 				if (curSrc != null) {
 					const regex = /pictures@([^\/]*)\//;
 					const match = curSrc.match(regex);
 					if (match) {
-						$("#metadata > strong,#metadata > li > strong").last().each(function(){
-							const children = this.childNodes;
+						const metadataElements = find("#metadata > strong, #metadata > li > strong");
+						if (metadataElements.length > 0) {
+							const lastElement = metadataElements[metadataElements.length - 1];
+							const children = lastElement.childNodes;
 							if (children.length > 0) {
-								const last = children[children.length - 1];
-								if (last.nodeType === Node.TEXT_NODE) {
+								const lastChild = children[children.length - 1];
+								if (lastChild.nodeType === Node.TEXT_NODE) {
 									const separator = " • ";
-									let t = last.textContent;
-									if (!t.endsWith(separator)) {
-										t += separator;
+									let textContent = lastChild.textContent;
+									if (!textContent.endsWith(separator)) {
+										textContent += separator;
 									}
-									last.textContent = t + `${match[1]}`;
+									lastChild.textContent = textContent + `${match[1]}`;
 								}
 							}
-						});
+						}
 					}
 				}
-			}
+			};
 		}
 
 		function updateLinks() {
 			if (document.location.search.length > 1) {
-				$("a").attr("href", function(i, href) {
-					hRef = removeSearch(href);
-					var hashPosition = hRef.indexOf("#");
-					
-					if (hashPosition == -1) return hRef + document.location.search;
-					else return hRef.substr(0, hashPosition) + document.location.search + hRef.substr(hashPosition);
+				find("a").forEach(anchor => {
+					let href = anchor.getAttribute("href");
+					let hRef = removeSearch(href);
+					let hashPosition = hRef.indexOf("#");
+
+					if (hashPosition === -1) {
+						anchor.setAttribute("href", hRef + document.location.search);
+					} else {
+						anchor.setAttribute("href", hRef.substr(0, hashPosition) + document.location.search + hRef.substr(hashPosition));
+					}
 				});
 			}
 			if ("ontouchstart" in document.documentElement) {
-		 		$("a,img").css("touch-action", "manipulation");
+				find("a, img").forEach(element => {
+					element.style.touchAction = "manipulation";
+				});
 			}
-		};
+		}
 
 		updateLinks();
-		srcFilename = filenameForImage($("img"));
+		const srcFilename = filenameForImage(findOne("img"));
 		if (srcFilename != null) {
 			addDownloadLink(srcFilename);
 		}
-	
-		$("#index,.index").find("a").each(function(){
-			$obj = $(this);
-			$obj.attr("href", $obj.attr("href")+"#"+document.location.pathname.split('/').pop());
+
+		find("#index a,.index a").forEach(anchor => {
+			const href = anchor.getAttribute("href");
+			anchor.setAttribute("href", `${href}#${document.location.pathname.split('/').pop()}`);
 		});
 	
 		var sideWidth = 0;
@@ -207,30 +252,29 @@ if (imagePageLoaded == null) {
 		}
 		
 		function imageObj() {
-			var $img = $("#photo").find("img").not("#download");
+			let img = findOne("#photo > img:not(#download)");
 			
-			if ($img.length == 0) {
-				$img = $("#content").find("img").not("#download");
+			if (!img) {
+				img = findOne("#content > img:not(#download)");
 			}
 			
-			return $img;
+			return img;
 		}
 		
 		function fullscreenImage() {
-			var $img = imageObj();
+			const img = imageObj();
 			
-			if ($img.length > 0) {
-				toggleFullscreen($img[0]);
+			if (img) {
+				toggleFullscreen(img);
 			}
 		}
 		
 		function canFullscreenImage() {
-			var $img = imageObj();
+			const img = imageObj();
 			
-			if ($img.length > 0) {
-				return canFullscreen($img[0]);
-			}
-			else {
+			if (img) {
+				return canFullscreen(img);
+			} else {
 				return false;
 			}
 		}
@@ -240,81 +284,130 @@ if (imagePageLoaded == null) {
 		document.addEventListener("mozfullscreenchange", onFullScreenChange, false);
 		
 		function onFullScreenChange() {
-		  var fullscreenElement = document.fullscreenElement || document.mozFullScreenElement || document.webkitFullscreenElement;
-		
-		  if (fullscreenElement == null) {
-			  $("img").not("#download").closest('div').attr("tabindex", "-1").focus().blur().removeAttr("tabindex");
-		  }
-		}
-		
-		function gotoNext() {
-			var $numberElement = $("#next,.next").find("a");
+			const fullscreenElement = document.fullscreenElement || document.mozFullScreenElement || document.webkitFullscreenElement;
 
-			if ($numberElement != null && $numberElement.length>0) {
-				switchToNewPage($numberElement, true);
+			if (fullscreenElement == null) {
+				find("img:not(#download)").forEach(img => {
+					const parentDiv = img.closest('div');
+					if (parentDiv) {
+						parentDiv.setAttribute("tabindex", "-1");
+						parentDiv.focus();
+						parentDiv.blur();
+						parentDiv.removeAttribute("tabindex");
+					}
+				});
 			}
 		}
 
-		function filenameForImage($img) {
-			var filename = $img.attr("filename");
-			if (filename == null) {
-				filename = $img.attr("src");
-				if (filename == null && $img.length > 0) {
-					filename = $img[0].currentSrc;
+		function gotoNext(e) {
+			const nextLink = findOne("#next a, .next a");
+
+			if (nextLink) {
+				e.preventDefault();
+				switchToNewPage(nextLink, true);
+			}
+		}
+
+		function filenameForImage(img) {
+			let filename = img.getAttribute("filename");
+			if (!filename) {
+				filename = img.getAttribute("src");
+				if (!filename && img.currentSrc) {
+					filename = img.currentSrc;
 				}
-				if (filename != null) {
+				if (filename) {
 					filename = filename.split("/").pop();
 				}
 			}
-			return(filename);
+			return filename;
 		}
 		
-		if ($("video")[0] == null) {
-			$("img").not("#download").click(gotoNext);
-			$("#photo").click(gotoNext);
-			
-			if ($("#next,.next").find("a").length > 0) {
-				$("img").not("#download").on("load", function() {
-					var $obj = $(this);
-					var filename = filenameForImage($obj);
+		if (!findOne("video")) {
+			find("img:not(#download)").forEach(img => {
+				setClick(img, gotoNext);
+			});
+			const photo = findOne("#photo");
+			if (photo) {
+				setClick(photo, gotoNext);
+			}
 
-					if (filename != null) {
-						var digitIndex = filename.search(/\d/);
-						
-						if (digitIndex >=0) {
-							var currentPageNumber = parseInt(filename.substr(digitIndex), 10);
+			const nextLink = findOne("#next a, .next a");
+			if (nextLink) {
+				find("img:not(#download)").forEach(img => {
+					img.onload = function () {
+						const filename = filenameForImage(img);
 
-							if (currentPageNumber > 0) {
-								var pageSize = useableSize();
-								var nextImage = new Image();
-								nextImage.width = pageSize[0]
-								nextImage.height = pageSize[1]
-								filename = filename.replace("-"+currentPageNumber+".", "-"+(currentPageNumber+1)+".");
-								nextImage.srcset = srcsetForFilename(filename, $obj.attr("nextsizes"));
+						if (filename) {
+							const digitIndex = filename.search(/\d/);
+
+							if (digitIndex >= 0) {
+								const currentPageNumber = parseInt(filename.substr(digitIndex), 10);
+
+								if (currentPageNumber > 0) {
+									const pageSize = useableSize();
+									const nextImage = new Image();
+									nextImage.width = pageSize[0];
+									nextImage.height = pageSize[1];
+									const nextFilename = filename.replace(
+										`-${currentPageNumber}.`,
+										`-${currentPageNumber + 1}.`
+									);
+									nextImage.srcset = srcsetForFilename(nextFilename, img.getAttribute("nextsizes"));
+								}
 							}
-						}						
-					}
+						}
+					};
 				});
 			}
 		}
 		
 		function updateBorderRows(landscape) {
 			if (mobileDevice) {
-				var borderRows = $(".row");
+				const borderRows = find(".row");
+
+				borderRows.forEach(row => {
+					row.style.fontSize = landscape ? "1em" : "2em";
+				});
+
+				const previousLink = findOne("#previous a");
+				const nextLink = findOne("#next a");
+				const indexLink = findOne("#index a");
+				const downloadImg = findOne("#downlink > img");
 
 				if (landscape) {
-					borderRows.css("font-size", "1em");
-					$("#previous>a").css("background-size", "auto").css("padding-left", "15px");
-					$("#next>a").css("background-size", "auto").css("padding-right", "15px");
-					$("#index>a").css("background-size", "auto").css("padding-left", "");
-					$("#downlink>img").css("transform", "").css("top", 3);
-				}
-				else {
-					borderRows.css("font-size", "2em");
-					$("#previous>a").css("background-size", "20px").css("padding-left", "25px");
-					$("#next>a").css("background-size", "20px").css("padding-right", "25px");
-					$("#index>a").css("background-size", "30px").css("padding-left", "40px");
-					$("#downlink>img").css("transform", "scale(2)").css("top", -10);
+					if (previousLink) {
+						previousLink.style.backgroundSize = "auto";
+						previousLink.style.paddingLeft = "15px";
+					}
+					if (nextLink) {
+						nextLink.style.backgroundSize = "auto";
+						nextLink.style.paddingRight = "15px";
+					}
+					if (indexLink) {
+						indexLink.style.backgroundSize = "auto";
+						indexLink.style.paddingLeft = "";
+					}
+					if (downloadImg) {
+						downloadImg.style.transform = "";
+						downloadImg.style.top = "3px";
+					}
+				} else {
+					if (previousLink) {
+						previousLink.style.backgroundSize = "20px";
+						previousLink.style.paddingLeft = "25px";
+					}
+					if (nextLink) {
+						nextLink.style.backgroundSize = "20px";
+						nextLink.style.paddingRight = "25px";
+					}
+					if (indexLink) {
+						indexLink.style.backgroundSize = "30px";
+						indexLink.style.paddingLeft = "40px";
+					}
+					if (downloadImg) {
+						downloadImg.style.transform = "scale(2)";
+						downloadImg.style.top = "-10px";
+					}
 				}
 			}
 		}
@@ -345,225 +438,299 @@ if (imagePageLoaded == null) {
 		}
 
 		function useableSize() {
-			var windowWidth = $(window).width();
-			var windowHeight = $(window).height();
+			let windowWidth = window.innerWidth;
+			let windowHeight = window.innerHeight;
 
-			if ($("#matte").length>0 && (windowWidth > 4.0 / 3.0 * windowHeight)) {
+			const matte = findOne("#matte");
+			if (matte && (windowWidth > 4.0 / 3.0 * windowHeight)) {
 				windowWidth = 4.0 / 3.0 * windowHeight;
 			}
 
-			var hMargin = 10 + sideWidth;
-			var landscape = windowWidth > windowHeight;
-			var vMargin = 88;
-			var borderRows = $(".row");
-			
-			if (borderRows.length == 2) {
+			let hMargin = 10 + sideWidth;
+			const landscape = windowWidth > windowHeight;
+			let vMargin = 88;
+			const borderRows = find(".row");
+
+			if (borderRows.length === 2) {
 				updateBorderRows(landscape);
 				vMargin = 0;
-				borderRows.each(function(){
-					vMargin += $(this).height();
+				borderRows.forEach(row => {
+					vMargin += row.offsetHeight;
 				});
 			}
-			
-			var $h2 = $("h2");
-			
-			if ($h2.length > 0 && $("#headerinfo1").length==0) {
-				vMargin += $h2.height();
+
+			const h2 = findOne("h2");
+			if (h2 && !findOne("#headerinfo1")) {
+				vMargin += h2.offsetHeight;
 			}
-			
+
 			if (fullscreenActive()) {
 				hMargin = 0;
 				vMargin = 0;
 			}
-			
+
 			windowWidth = Math.max(320, windowWidth - hMargin);
 			windowHeight = Math.max(320, windowHeight - vMargin);
 
-			return([windowWidth, windowHeight]);
+			return [windowWidth, windowHeight];
 		}
 	
 		function setupMatte() {
-			var $matte = $("#matte");
-			if ($matte.length == 0) {
+			const matte = findID("matte");
+			if (!matte) {
 				return;
 			}
-			
-			var windowWidth = $(window).width();
-			var windowHeight = $(window).height();
 
-			var minWidth = windowWidth;
+			const windowWidth = window.innerWidth;
+			const windowHeight = window.innerHeight;
+
+			let minWidth = windowWidth;
 			if (windowWidth > 4.0 / 3.0 * windowHeight) {
 				minWidth = Math.max(320, 4.0 / 3.0 * windowHeight);
 			}
 
-			var minPadding = 30;
-			var minMargin = 30;
-			var matteMargin = 30;
+			const minPadding = 30;
+			const minMargin = 30;
+			let matteMargin = 30;
 
 			if (minWidth > windowWidth) {
 				matteMargin = 0;
-				// console.log("minWidth > ");
-			} else if ((minWidth + 2 * minPadding + 2 * minMargin < windowWidth) && (minWidth + 0.5 * (windowWidth - minWidth) > 16.0 / 9.0 * windowHeight)) {
+			} else if (
+				minWidth + 2 * minPadding + 2 * minMargin < windowWidth &&
+				minWidth + 0.5 * (windowWidth - minWidth) > 16.0 / 9.0 * windowHeight
+			) {
 				if (16.0 / 9.0 * windowHeight > minWidth + 2 * minPadding) {
-					// console.log("16.9 ");
 					matteMargin = 0.5 * (windowWidth - 16.0 / 9.0 * windowHeight);
 				} else {
-					// console.log("minPadding");
 					matteMargin = 0.5 * (windowWidth - minWidth - 2 * minPadding);
 				}
 			} else {
 				matteMargin = (windowWidth - minWidth) / 4.0;
-				// console.log("splitting padding ");
 			}
 
-
-			$matte.attr("style", "margin: 0 " + matteMargin + "px");
+			matte.style.margin = `0 ${matteMargin}px`;
 		}
 
 		function updateImageDimensions() {
-			$("img").not("#download").each(function() {
-				var $obj = $(this);
-				var width = $obj.attr("originalWidth");
-				var height = $obj.attr("originalHeight");
-				
-				if (width == null) {
-					width = $obj.width();
-					height = $obj.height();
-					$obj.attr("originalWidth", width);
-					$obj.attr("originalHeight", height);
-				}
-				
-				var borderThickness = 0;
-				var borderValue = $("body").attr("borderthick");
-				if (borderValue != null) {
-					borderThickness = parseInt(borderValue);
+			find("img:not(#download)").forEach(img => {
+				let width = img.getAttribute("originalWidth");
+				let height = img.getAttribute("originalHeight");
+
+				if (!width) {
+					width = img.width;
+					height = img.height;
+					img.setAttribute("originalWidth", width);
+					img.setAttribute("originalHeight", height);
 				}
 
-				var size = useableSize()
-				var windowWidth = size[0] - 2 * borderThickness;
-				var windowHeight = size[1] - 2 * borderThickness;
-				var newWidth = width;
-				var newHeight = height;
-				var aspectRatio = width / height;
-				
-				if (aspectRatio < windowWidth/windowHeight) {
+				let borderThickness = 0;
+				const borderValue = document.body.getAttribute("borderthick");
+				if (borderValue) {
+					borderThickness = parseInt(borderValue, 10);
+				}
+
+				const size = useableSize();
+				const windowWidth = size[0] - 2 * borderThickness;
+				const windowHeight = size[1] - 2 * borderThickness;
+				let newWidth = width;
+				let newHeight = height;
+				const aspectRatio = width / height;
+
+				if (aspectRatio < windowWidth / windowHeight) {
 					newWidth = Math.floor(windowHeight * aspectRatio);
 					newHeight = windowHeight;
-				}
-				else {
+				} else {
 					newHeight = Math.floor(windowWidth / aspectRatio);
 					newWidth = windowWidth;
 				}
-				
-				$obj.attr("width", newWidth);
-				$obj.attr("height", newHeight);
-				
-				var vOffset = (windowHeight - newHeight) * 0.5;
-				$obj.parent().css("margin-top", vOffset + "px");
-				$obj.parent().css("margin-bottom", vOffset + "px");
-					
-				$(".detail").eq(0).css("width", ((windowWidth + 2 * borderThickness) + "px"));
-				$(".row").eq(1).css("width", ((windowWidth + 2 * borderThickness) + "px"));
+
+				img.setAttribute("width", newWidth);
+				img.setAttribute("height", newHeight);
+
+				const vOffset = (windowHeight - newHeight) * 0.5;
+				const parent = img.parentElement;
+				if (parent) {
+					parent.style.marginTop = `${vOffset}px`;
+					parent.style.marginBottom = `${vOffset}px`;
+				}
+
+				const detail = findOne(".detail");
+				if (detail) {
+					detail.style.width = `${windowWidth + 2 * borderThickness}px`;
+				}
+				const rows = find(".row");
+				if (rows.length >= 2) {
+					rows[1].style.width = `${windowWidth + 2 * borderThickness}px`;
+				}
 
 				setupMatte();
 
-				if ($obj.attr("srcset") == null && $obj.attr("filename") != null) {
-					$obj.attr("src", null);
-					$obj.attr("srcset", srcsetForFilename($obj.attr("filename"), $obj.attr("sizes")));
+				if (!img.getAttribute("srcset") && img.getAttribute("filename")) {
+					img.setAttribute("src", "");
+					img.setAttribute("srcset", srcsetForFilename(img.getAttribute("filename"), img.getAttribute("sizes")));
 				}
 			});
 		};
 		
-		function handleClick() {
-			window.event.preventDefault();
-			switchToNewPage($(this), true);
+		function handleClick(e) {
+			e.preventDefault();
+			switchToNewPage(this, true);
 		}
 			
 		function updateItems() {
-			$("#previous,li.previous").attr("title", "Previous (left arrow)");
-			$("#previous,li.previous").find("a").click(handleClick);
-			$("#next,.next").attr("title", "Next (spacebar or right arrow)");
-			$("#next,.next").find("a").click(handleClick);
-			$("#index,li.index").attr("title", "Goto Index (i)");
-			$("#index,li.index").find("a").click(handleClick);
-			$("strong:empty").remove();
-			$("li").not(".pagenumber").each(function(){
-				let $obj = $(this);
-				
-				if ($obj.text().length < 2) {
-					$obj.remove()
-				};
+			find("#previous,li.previous").forEach(el => {
+				el.setAttribute("title", "Previous (left arrow)");
+				setClick(el.querySelector("a"), handleClick);
 			});
-			$("#metadata > strong").each(function(){
-				let $obj = $(this);
-				let t = $obj.text();
+
+			find("#next,.next").forEach(el => {
+				el.setAttribute("title", "Next (spacebar or right arrow)");
+				setClick(el.querySelector("a"), handleClick);
+			});
+
+			find("#index,li.index").forEach(el => {
+				el.setAttribute("title", "Goto Index (i)");
+				setClick(el.querySelector("a"), handleClick);
+			});
+
+			find("strong:empty").forEach(el => el.remove());
+
+			find("li:not(.pagenumber)").forEach(el => {
+				if (el.textContent.trim().length < 2) {
+					el.remove();
+				}
+			});
+
+			find("#metadata > strong").forEach(el => {
+				let text = el.textContent;
 				let separator = " • ";
-				let parts = t.split(separator);
-				
+				let parts = text.split(separator);
+
 				if (parts.length > 0) {
-					first = parts.shift();
-					$obj.text(separator + parts.join(separator));
-					let $newSpan = $("<span>" + first + "</span>").css( { "cursor": "copy", "text-decoration": "underline", "text-decoration-style": "dashed", "position": "relative" } );
-					let $popup = $("<span>Copied to clipboard</span>").css( { "display": "none", "width": "max-content", "background-color": "#555", "color": "#fff", "border-radius": "6px", "padding": "6px 10px", "position": "absolute", "z-index": "1", "bottom": "125%", "left": "50%" });
-					$newSpan.append($popup);
-					$obj.prepend($newSpan);
-					$newSpan.on("click", function() {
+					let first = parts.shift();
+					el.textContent = separator + parts.join(separator);
+
+					let newSpan = document.createElement("span");
+					newSpan.textContent = first;
+					newSpan.style.cursor = "copy";
+					newSpan.style.textDecoration = "underline";
+					newSpan.style.textDecorationStyle = "dashed";
+					newSpan.style.position = "relative";
+
+					let popup = document.createElement("span");
+					popup.textContent = "Copied to clipboard";
+					popup.style.display = "none";
+					popup.style.width = "max-content";
+					popup.style.backgroundColor = "#555";
+					popup.style.color = "#fff";
+					popup.style.borderRadius = "6px";
+					popup.style.padding = "6px 10px";
+					popup.style.position = "absolute";
+					popup.style.zIndex = "1";
+					popup.style.bottom = "125%";
+					popup.style.left = "50%";
+
+					newSpan.appendChild(popup);
+					el.prepend(newSpan);
+
+					setClick(newSpan, function () {
 						if (navigator.clipboard) {
 							navigator.clipboard.writeText(first);
-							$popup.show().delay(600).fadeOut(300);
-						}
-						else {
-							let input = document.createElement('textarea');
-							input.innerHTML = first;
+						} else {
+							let input = document.createElement("textarea");
+							input.value = first;
 							document.body.appendChild(input);
 							input.select();
-							let result = document.execCommand('copy');
+							document.execCommand("copy");
 							document.body.removeChild(input);
-							$popup.show().delay(600).fadeOut(300);
 						}
+						popup.style.display = "block";
+						setTimeout(() => {
+							popup.style.display = "none";
+						}, 900);
 					});
 				}
 			});
-		};
-		
-		var $sideBar = $("td.sideinfo");
-		
-		if ($sideBar.length == 1) {
-			sideWidth = $sideBar.width() + 10;
 		}
 		
-		if ($("h2").length > 0) {
-			$("body").css("display", "inline");
+		const sideBar = findOne("td.sideinfo");
+		
+		if (sideBar) {
+			sideWidth = sideBar.offsetWidth + 10;
 		}
 		
-		$("#photo > img").css( { "display": "block", "margin-left": "auto", "margin-right": "auto" } );
-		$("div.detail").css("padding-top", "0px");
+		if (findOne("h2")) {
+			document.body.style.display = "inline";
+		}
+		
+		const photoImg = findOne("#photo > img");
+		if (photoImg) {
+			photoImg.style.display = "block";
+			photoImg.style.marginLeft = "auto";
+			photoImg.style.marginRight = "auto";
+		}
+		
+		const detail = findOne("div.detail");
+		if (detail) {
+			detail.style.paddingTop = "0px";
+		}
+		
 		updateItems();
 	
-		$("#footer > p,#footer > li").not("a").wrapInner('<a href="../../index.html"></a>');
+		find("#footer > p, #footer > li").forEach(el => {
+			if (!el.querySelector("a")) {
+				const link = document.createElement("a");
+				link.href = "../../index.html";
+				link.innerHTML = el.innerHTML;
+				el.innerHTML = "";
+				el.appendChild(link);
+			}
+		});
 			
-		if ($("td.sideinfo").length == 0 && $("ul#photoInfo").length == 0 && $("div#headerinfo1").length == 0) {
-			$('<style type=\"text/css\">ul:not(#nav) li { list-style: none; display: inline; } ul:not(#nav) li:after { content: " -"; } ul:not(#nav) li:last-child:after { content: none; }</style>').appendTo( "head" );
+		if (!findOne("td.sideinfo") && 
+			!findOne("ul#photoInfo") && 
+			!findOne("div#headerinfo1")) {
+			const style = document.createElement("style");
+			style.type = "text/css";
+			style.textContent = `
+				ul:not(#nav) li { list-style: none; display: inline; }
+				ul:not(#nav) li:after { content: " -"; }
+				ul:not(#nav) li:last-child:after { content: none; }
+			`;
+			document.head.appendChild(style);
 		}
 		
-		if ($("#headerinfo1").length) {
-			$("#header").insertAfter($("div#footer"));
+		const headerInfo = findOne("#headerinfo1");
+		if (headerInfo) {
+			const header = findOne("#header");
+			const footer = findOne("div#footer");
+			if (header && footer) {
+				footer.insertAdjacentElement("afterend", header);
+			}
 		}
 
-	   	$("body").css("display", "inline");
-		
+		document.body.style.display = "inline";
 		updateImageDimensions();
 	
 	   	var imageSwitchInProgress = false;
 	   	
-		function moveElement($srcObj, $destObj, selector) {
-			$destObj.find(selector).replaceWith($srcObj.find(selector));
+		function moveElement(srcObj, destObj, selector) {
+			const srcElement = srcObj.querySelector(selector);
+			const destElement = destObj.querySelector(selector);
+			if (srcElement && destElement) {
+				destElement.replaceWith(srcElement);
+			}
 		};
 
+		let lastPushedState = null;
+
 		function pushState(hRef) {
-			history.pushState({ ref: hRef }, "", hRef);
+			if (hRef !== lastPushedState) {
+				history.pushState({ ref: hRef }, "", hRef);
+				lastPushedState = hRef;
+			}
 		}
-		
+
 		if (window.history && history.pushState) {
 			var currentRef = window.location.href.split("/").pop();
 			history.replaceState( { ref: currentRef }, "", currentRef);
@@ -576,26 +743,27 @@ if (imagePageLoaded == null) {
 			}
 		}
 
-		var $waitElement = null;
+		let waitElement = null;
 
 		function removeWait() {
-			if ($waitElement != null) {
-				$waitElement.css("opacity", "1.0");
-				$waitElement = null;
+			if (waitElement != null) {
+				waitElement.style.opacity = "1.0";
+				waitElement = null;
 			}
 		}
-		
-		function showWait($element) {
+
+		function showWait(element) {
 			removeWait();
-			$waitElement = $element;
-			$waitElement.css("opacity", "0.75");
-		}
-		
-		function replaceAll(str, search, replace) {
-			return str.split(search).join(replace)
+			waitElement = element;
+			waitElement.style.opacity = "0.75";
 		}
 
-		var waitTimer = null;
+		function replaceAll(str, search, replace) {
+			if (search === "") return str;
+			return str.split(search).join(replace);
+		}
+
+		let waitTimer = null;
 
 		function cancelWaitTimer() {
 			if (waitTimer != null) {
@@ -604,201 +772,207 @@ if (imagePageLoaded == null) {
 			}
 		}
 
-		function switchToRef(hRef, canDoLocal) {
-			if (canDoLocal && window.history && history.pushState) {
-				if (!imageSwitchInProgress) {
-					var $newBody = $("<body></body>");
-					
-					imageSwitchInProgress = true;
-					$newBody.load(hRef, function() {
-						var $body = $("body");
-						var $srcImg = $newBody.find("#photo").find("img");
-						var $destImg = $body.find("#photo").find("img").not("#download");
-						
-						if ($srcImg.length == 0 && $destImg.length == 0) {
-							var $srcImg = $newBody.find("#content").find("img");
-							var $destImg = $body.find("#content").find("img").not("#download");
-						}
-						
-						if ($srcImg.length && $destImg.length) {
-							var srcFileName = $srcImg.attr("filename");
-							var destFileName = $destImg.attr("filename");
-							var curSrcFileName = $destImg[0].currentSrc
-							var setFileName = true;
-							
-							if (srcFileName == null) {
-								srcFileName = $srcImg.attr("src").split("/").pop();
-								destFileName = $destImg.attr("src").split("/").pop();
-								setFileName = false;
-							}
-							
-							if (srcFileName != null && srcFileName.length > 0 && destFileName != null && destFileName.length > 0 && curSrcFileName != null && curSrcFileName.length>0) {
-								var srcRef = $destImg.attr("src");
-								var srcsetRef = $destImg.attr("srcset");
-								
-								if (srcRef != null && srcRef.length>0) {
-									srcRef = replaceAll(srcRef, destFileName, srcFileName);
-								}
-								if (srcsetRef != null && srcsetRef.length > 0) {
-									srcsetRef = srcsetForFilename(srcFileName, $srcImg.attr("sizes"))
-								}
-								
-								var tempImage = new Image();
-								tempImage.onload = function() {
-									$destImg.attr("originalWidth", $srcImg.attr("width"));
-									$destImg.attr("originalHeight", $srcImg.attr("height"));
-									$destImg.attr("sizes", $srcImg.attr("sizes"))
-									$destImg.attr("nextsizes", $srcImg.attr("nextsizes"))
-									if (srcRef != null && srcRef.length>0) {
-										$destImg.attr("src", srcRef);
-									}
-									if (srcsetRef != null && srcsetRef.length > 0) {
-										$destImg.attr("srcset", srcsetRef);
-									}
-									if (setFileName) {
-										$destImg.attr("filename", srcFileName);
-									}
-									cancelWaitTimer();
-									removeWait();
-									updateImageDimensions();
-									imageSwitchInProgress = false;
-									$("div.detail").css("padding-top", "0px");
-								}
-								var size = useableSize()
-								tempImage.width = size[0];
-								tempImage.height = size[1];
-								if (srcRef != null && srcRef.length>0) {
-									tempImage.src = replaceAll(curSrcFileName, destFileName, srcFileName);
-								}
-								if (srcsetRef != null && srcsetRef.length > 0) {
-									tempImage.srcset = srcsetRef;
-								}
-								
-								if (!tempImage.complete) {
-									waitTimer = setTimeout(() => {
-										if (!tempImage.complete) {
-											showWait($destImg.parent());
-										}
-										waitTimer = null;
-									}, 20);
-								}
-															
-								moveElement($newBody, $body, "#previous");
-								moveElement($newBody, $body, "#next");
-								moveElement($newBody, $body, "#current");
-								$body.find('[id="metadata"]:gt(0)').remove();
-								moveElement($newBody, $body, "#metadata");
-								moveElement($newBody, $body, "#index");
-								moveElement($newBody, $body, "p.index");
-								moveElement($newBody, $body, "ul#nav");
-								moveElement($newBody, $("head"), "title");
-								var newTitle = document.title.split(" - ")[0].split("@1x")[0];
-								if (/\d\d\d\d-\d\d-\d\d-/.test(newTitle)) {
-									newTitle= newTitle.slice(11);
-								}
-								document.title = newTitle;
+		async function switchToRef(hRef, canDoLocal) {
+			if (imageSwitchInProgress) {
+				console.warn("Image switch already in progress, ignoring request.");
+				return;
+			}
+		
+			imageSwitchInProgress = true;
+		
+			try {
+				if (canDoLocal && window.history && history.pushState) {
+					const newBody = document.createElement("body");
+					const response = await fetch(hRef);
+					const html = await response.text();
+					newBody.innerHTML = html;
 
-								addDownloadLink(srcFileName);
-	
-								$("#index,.index").find("a").each(function(){
-									$obj = $(this);
-									$obj.attr("href", $obj.attr("href")+"#"+hRef);
-								});
-								updateLinks();
-								updateItems();
-							}
-							else {
-								exitFullscreen();
-								document.location.href = hRef;
-							}
+					const body = document.body;
+					let srcImg = newBody.querySelector("#photo img");
+					let destImg = body.querySelector("#photo img:not(#download)");
+
+					if (!srcImg && !destImg) {
+						srcImg = newBody.querySelector("#content img");
+						destImg = body.querySelector("#content img:not(#download)");
+					}
+
+					if (srcImg && destImg) {
+						let srcFileName = srcImg.getAttribute("filename");
+						let destFileName = destImg.getAttribute("filename");
+						const curSrcFileName = destImg.currentSrc;
+						let setFileName = true;
+
+						if (!srcFileName) {
+							srcFileName = srcImg.getAttribute("src").split("/").pop();
+							destFileName = destImg.getAttribute("src").split("/").pop();
+							setFileName = false;
 						}
-						else {
+
+						if (srcFileName && destFileName && curSrcFileName) {
+							let srcRef = destImg.getAttribute("src");
+							let srcsetRef = destImg.getAttribute("srcset");
+
+							if (srcRef) {
+								srcRef = replaceAll(srcRef, destFileName, srcFileName);
+							}
+							if (srcsetRef) {
+								srcsetRef = srcsetForFilename(srcFileName, srcImg.getAttribute("sizes"));
+							}
+
+							const tempImage = new Image();
+							tempImage.onload = function () {
+								destImg.setAttribute("originalWidth", srcImg.getAttribute("width"));
+								destImg.setAttribute("originalHeight", srcImg.getAttribute("height"));
+								destImg.setAttribute("sizes", srcImg.getAttribute("sizes"));
+								destImg.setAttribute("nextsizes", srcImg.getAttribute("nextsizes"));
+								if (srcRef) {
+									destImg.setAttribute("src", srcRef);
+								}
+								if (srcsetRef) {
+									destImg.setAttribute("srcset", srcsetRef);
+								}
+								if (setFileName) {
+									destImg.setAttribute("filename", srcFileName);
+								}
+								cancelWaitTimer();
+								removeWait();
+								updateImageDimensions();
+								imageSwitchInProgress = false;
+								const detail = findOne("div.detail");
+								if (detail) {
+									detail.style.paddingTop = "0px";
+								}
+							};
+							const size = useableSize();
+							tempImage.width = size[0];
+							tempImage.height = size[1];
+							if (srcRef) {
+								tempImage.src = replaceAll(curSrcFileName, destFileName, srcFileName);
+							}
+							if (srcsetRef) {
+								tempImage.srcset = srcsetRef;
+							}
+
+							if (!tempImage.complete) {
+								waitTimer = setTimeout(() => {
+									if (!tempImage.complete) {
+										showWait(destImg.parentElement);
+									}
+									waitTimer = null;
+								}, 20);
+							}
+
+							moveElement(newBody, body, "#previous");
+							moveElement(newBody, body, "#next");
+							moveElement(newBody, body, "#current");
+							body.querySelectorAll('[id="metadata"]:not(:first-child)').forEach(el => el.remove());
+							moveElement(newBody, body, "#metadata");
+							moveElement(newBody, body, "#index");
+							moveElement(newBody, body, "p.index");
+							moveElement(newBody, body, "ul#nav");
+							moveElement(newBody, document.head, "title");
+							let newTitle = document.title.split(" - ")[0].split("@1x")[0];
+							if (/\d\d\d\d-\d\d-\d\d-/.test(newTitle)) {
+								newTitle = newTitle.slice(11);
+							}
+							document.title = newTitle;
+
+							addDownloadLink(srcFileName);
+
+							find("#index a,.index a").forEach(anchor => {
+								anchor.setAttribute("href", `${anchor.getAttribute("href")}#${hRef}`);
+							});
+							updateLinks();
+							updateItems();
+						} else {
 							exitFullscreen();
 							document.location.href = hRef;
 						}
-					});
+					} else {
+						exitFullscreen();
+						document.location.href = hRef;
+					}
+				} else {
+					targetRef = hRef;
+					if (fullscreenActive()) {
+						exitFullscreen();
+						setTimeout(setRef, 1000);
+					} else {
+						setRef();
+					}
 				}
+			} catch (error) {
+				console.error("Error switching to ref:", error);
+				document.location.href = hRef; // Fallback to full page reload
+			} finally {
+				imageSwitchInProgress = false;
 			}
-			else {
-				targetRef = hRef;
-				if (fullscreenActive()) {
-					exitFullscreen();
-					setTimeout(setRef, 1000);
-				}
-				else {
-					setRef();
-				}
-			}
-		};
+		}
 
-	   	function switchToNewPage($numberElement, canDoLocal) {
-			if ($numberElement != null && $numberElement.length>0) {
-				var hRef = $numberElement.attr("href");
+		function switchToNewPage(numberElement, canDoLocal) {
+			if (numberElement) {
+				const hRef = numberElement.getAttribute("href");
 				if (canDoLocal && hRef.includes("index")) {
 					canDoLocal = false;
 				}
 				if (canDoLocal) {
 					try {
 						pushState(hRef);
-					}
-					catch {
+					} catch {
 						canDoLocal = false;
 					}
 				}
 				switchToRef(hRef, canDoLocal);
 			}
-		};
+		}
 	   	
-		$(document).keydown(function(event) {
-			var handled = true;
-			var $numberElement = null;
-			var canDoLocal = false;
-			
-			switch (event.which) {
-				case 33:	/* page up */
-				case 37:	/* left */
-				case 38:	/* up */
-					$numberElement = $("#previous,.previous").find("a");
+		document.addEventListener("keydown", function(event) {
+			let handled = true;
+			let numberElement = null;
+			let canDoLocal = false;
+
+			switch (event.key) {
+				case "PageUp": /* page up */
+				case "ArrowLeft": /* left */
+				case "ArrowUp": /* up */
+					numberElement = findOne("#previous a, .previous a");
 					canDoLocal = true;
 					break;
-				case 32:	/* spacebar */
-					if ($("video")[0] != null) {
+				case " ": /* spacebar */
+					if (findOne("video") != null) {
 						handled = false;
 						break;
 					}
 					// fall into next case
-				case 9: 	/* tab */
-					if (event.which==9 && canFullscreenImage() && !fullscreenActive()) {
+				case "Tab": /* tab */
+					if (event.key === "Tab" && canFullscreenImage() && !fullscreenActive()) {
 						fullscreenImage();
 						break;
 					}
 					// fall into next case
-				case 66:	/* stop-start, B */
-				case 34:	/* page down */
-				case 39:	/* right */
-				case 40: 	/* down */
-					$numberElement = $("#next,.next").find("a");
-					
-					if ($numberElement.length==0) {
-						$numberElement = $("#index,.index").find("a");
-					}
-					else {
+				case "b": /* stop-start, B */
+				case "PageDown": /* page down */
+				case "ArrowRight": /* right */
+				case "ArrowDown": /* down */
+					numberElement = findOne("#next a, .next a");
+
+					if (!numberElement) {
+						numberElement = findOne("#index a, .index a");
+					} else {
 						canDoLocal = true;
 					}
 					break;
-				case 38:	/* up */
-				case 73:	/* i */
+				case "i": /* i */
 					if (!event.altKey && !event.shiftKey && !event.ctrlKey) {
-						$numberElement = $("#index,.index").find("a");
+						numberElement = findOne("#index a, .index a");
 					} else {
 						handled = false;
 					}
 					break;
-				case 70:	/* f - fullscreen */
+				case "f": /* f - fullscreen */
 					if (!event.altKey && !event.shiftKey && !event.ctrlKey && !event.metaKey) {
 						fullscreenImage();
-					}
-					else {
+					} else {
 						handled = false;
 					}
 					break;
@@ -806,24 +980,28 @@ if (imagePageLoaded == null) {
 					handled = false;
 					break;
 			}
-		
+
 			if (handled) {
 				event.preventDefault();
 			}
-			
-			switchToNewPage($numberElement, canDoLocal);
+
+			switchToNewPage(numberElement, canDoLocal);
 		});
-		
-		$(window).resize(function() {
+
+		window.addEventListener("resize", function() {
 			updateImageDimensions();
 		});
-		
+
 		window.onpopstate = function(event) {
 			if (event.state != null) {
-				hRef = event.state["ref"];
-				
+				const hRef = event.state["ref"];
+
 				if (hRef != null) {
-					switchToRef(hRef, true);
+					if (!imageSwitchInProgress) {
+						switchToRef(hRef, true);
+					} else {
+						console.warn("Image switch in progress, ignoring popstate.");
+					}
 				}
 			}
 		};
