@@ -293,6 +293,8 @@ def save_versions(image_ref, ref_index, version_data, header_info, image_folders
 		start_time = time.time()
 	# print("Image name: " + image_ref["file_name"])
 	image = open_image_file(image_ref["file_path"])
+	if not image:
+		return (-1, "Cannot open image: " + image_ref["file_name"], None, ref_index)
 	if do_timing:
 		open_end_time = time.time()
 		timing_data["open_time"] = open_end_time - start_time
@@ -581,7 +583,10 @@ def make_photo_block(photo_lines, image_refs):
 
 	for image_ref in image_refs:
 		new_image_lines = image_lines.copy()
-		new_size = scaled_size(image_ref["image_size"], thumb_size)
+		if "image_size" in image_ref:
+			new_size = scaled_size(image_ref["image_size"], thumb_size)
+		else:
+			new_size = [thumb_size, thumb_size]
 		
 		picture_num = image_ref["picture_num"]
 		if not args.top_index:
@@ -1661,8 +1666,9 @@ def main():
 				replace_key(new_detail_lines, "_PageTitle_", html.escape(page_title))
 				replace_key(new_detail_lines, "_MetaDesc_", html.escape(args.metadesc))
 				replace_key(new_detail_lines, "_ImageURL_", picture_url(picture_name_root, picture_num))
-				replace_key(new_detail_lines, "_ImageWidth_", str(image_ref["width@1x"]))
-				replace_key(new_detail_lines, "_ImageHeight_", str(image_ref["height@1x"]))
+				if "width@1x" in image_ref:
+					replace_key(new_detail_lines, "_ImageWidth_", str(image_ref["width@1x"]))
+					replace_key(new_detail_lines, "_ImageHeight_", str(image_ref["height@1x"]))
 			
 				replace_key(new_detail_lines, "_IndexPageURL_", index_url(image_ref["index_page_num"], for_html=False))
 				
