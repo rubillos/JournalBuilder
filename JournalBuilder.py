@@ -39,6 +39,7 @@ parser.add_argument("-nc", "--nocache", dest="no_cache", help="Prevent caching o
 parser.add_argument("-x", "--express", dest="express", help="Express mode - one file per image", action="store_true")
 parser.add_argument("-xx", "--extraexpress", dest="extraexpress", help="Extra Express mode - one file per image, only generate thumbnails", action="store_true")
 parser.add_argument("-b", "--browser", dest="open_result", help="Open output journal in browser", action="store_true")
+parser.add_argument("-gr", "--grid", dest="grid_count", help="Create grid pages with n photos per page.", type=int, default=0)
 
 group = parser.add_argument_group("cleaning")
 group.add_argument("-c", "--clean", dest="clean", help="Remove all existing output files", action="store_true")
@@ -272,7 +273,7 @@ def save_versions(image_ref, ref_index, version_data, header_info, image_folders
 		return (scaled_image, saved_time-scaled_time, scaled_time-start_time)
 
 	def save_scaled_header(image, size, offset, path, sampling, profile):
-		src_slice_height = int(image.size[0] * size[1] / size[0])
+		src_slice_height = min(int(image.size[0] * size[1] / size[0]), image.size[1])
 		src_top = int((image.size[1]-src_slice_height) * offset / 100)
 		start_time = time.time()
 		cropped_image = image.resize(size, box=(0, src_top, image.size[0], src_top+src_slice_height), resample=sampling)
@@ -661,6 +662,23 @@ def add_images_before_ref_name(refs, before_ref_name, dest_list, index_page_num,
 					print_error("  adding ref: ", None, ref["file_name"])
 			dest_list.append({"photos": new_refs})
 
+def add_images_by_count(refs, count, dest_list, index_page_num, timezone):
+	if args.verbose_logging:
+		print_error("add images by count: ", None, count)
+	if len(refs):
+		new_refs = []
+		while len(refs) > 0 and len(new_refs) < count:
+			ref = refs.pop(0)
+			new_refs.append(ref)
+
+		if len(new_refs) > 0:
+			for ref in new_refs:
+				ref["index_page_num"] = index_page_num
+				ref["timezone"] = timezone
+				if args.verbose_logging:
+					print_error("  adding ref: ", None, ref["file_name"])
+			dest_list.append({"photos": new_refs})
+
 def rearrange(pages):
 	def find_item(tall, line_index, start_offset=0):
 		start_index = line_index * 4
@@ -831,6 +849,8 @@ def scan_header(journal, date_overrides):
 				args.assets_path = text
 			case("jspath"):
 				args.js_path = text
+			case("grid"):
+				args.grid_count = int(text)
 
 def getFilesPhotoKit(file_paths):
 	import urllib.parse
@@ -1034,13 +1054,16 @@ def findDifferences(text_lines, original_journal):
 			out_file.write(original_journal)
 			out_file.close()
 	elif diff_count == 0:
-		console.print("No differences fouund.")
+		console.print("No differences found.")
 	
 def main():
 	global console
 	global page_width
 	global nav_width
 	global destination_folder
+
+	global_header_ref = None
+	global_header_offset = 50
 
 	unplaced_image_refs = []
 
@@ -1141,7 +1164,7 @@ def main():
 					if not title and 'Image ImageDescription' in keys:
 						title = tags['Image ImageDescription'].values
 
-					if title and (title != "default") and not ("DCIM\\" in title) and not ("OLYMPUS DIGITAL CAMERA" in title):
+					if title and (title != "default") and not ("DCIM\\" in title) and not ("OLYMPUS DIGITAL CAMERA" in title) and not ("Minolta DSC" in title):
 						image_ref["caption"] = title
 					
 					exif_data = []
@@ -1206,6 +1229,7 @@ def main():
 		
 		if tag == "site":
 			journal_title = text
+			args.journal_title = text
 		elif tag == "page" or tag == "epilog":
 			index_page_num += 1
 			last_entries = entries
@@ -1233,6 +1257,18 @@ def main():
 			page_headers.append((header_ref, header_offset, index_page_num))
 			page_names.append(text)
 			pages.append(page)
+		elif tag == "globalheader":
+			tag_parts = subtag.split(",")
+			if len(tag_parts) >= 1:
+				try:
+					global_header_ref = next((image_ref for image_ref in all_image_refs if image_ref["file_name"] == tag_parts[0]), None)
+					if len(tag_parts) >= 2:
+						global_header_offset = int(tag_parts[1])
+				except:
+					pass
+			
+				if not global_header_ref and not args.do_diff:
+					print_error("Warning: Global Header image not found: ", text, tag_parts[0])
 		elif tag == "caption":
 			caption_ref = next((image_ref for image_ref in all_image_refs if image_ref["file_name"] == subtag), None)
 			if caption_ref:
@@ -1327,18 +1363,35 @@ def main():
 		quit()
 
 	if len(pages) == 0 and args.album_name:
-		index_page_num = 1
-		name = args.journal_title if args.journal_title else args.album_name
-		journal_title = name
-		entries = []
-		page = { "entries": entries }
-		pages.append(page)
-		page_headers.append((None, 0, index_page_num))
-		page_names.append(name)
+		if args.grid_count > 0:
+			index_page_num = 1
+			name = args.journal_title if args.journal_title else args.album_name
+			journal_title = name
+			while len(unplaced_image_refs) > 0:
+				entries = []
+				page = {"entries": entries}
+				pages.append(page)
+				page_headers.append((None, 0, index_page_num))
+				page_names.append(f"{index_page_num}")
+				add_images_by_count(unplaced_image_refs, args.grid_count, entries, index_page_num, currentTimezone)
+				index_page_num += 1
+		else:
+			index_page_num = 1
+			name = args.journal_title if args.journal_title else args.album_name
+			journal_title = name
+			entries = []
+			page = { "entries": entries }
+			pages.append(page)
+			page_headers.append((None, 0, index_page_num))
+			page_names.append(name)
 
 	if entries is not None:
 		add_images_before_date(unplaced_image_refs, None, entries, index_page_num, currentTimezone)
 	
+	if global_header_ref:
+		for i in range(len(page_headers)):
+			page_headers[i] = (global_header_ref, global_header_offset, 1)
+
 	# merge movie entries
 	last_photos = None
 	for page_index, page in enumerate(pages):
@@ -1572,7 +1625,7 @@ def main():
 					return Text("{:3.1f}s".format(elapsed), style="bright_cyan")
 
 		with Progress(prog_description, BarColumn(), prog_percentage, StyledElapsedColumn(), prog_rate, console=console) as progress:
-			task = progress.add_task("Creating {}".format(pluralize("image", image_count)), total=image_count, ips=0, color="conceal")
+			task = progress.add_task("Creating images for {}".format(pluralize("photo", image_count)), total=image_count, ips=0, color="conceal")
 			futures = []
 			image_process_start = time.time()
 			completed_count = 0
@@ -1806,7 +1859,7 @@ def main():
 					insert_array_into_array(make_nav_bar(nav_lines.copy(), page_index), new_index_lines, nav_index)
 			
 				if page_headers[page_index-1][0]:
-					replace_key(new_index_lines, "_HeaderImageURL_", header_image_url(page_index))
+					replace_key(new_index_lines, "_HeaderImageURL_", header_image_url(1 if global_header_ref else page_index))
 				else:
 					remove_lines_with_key(new_index_lines, "_HeaderImageURL_")
 			

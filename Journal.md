@@ -24,6 +24,8 @@ Below is the layout for the journal.txt file
 [Metadesc]url                                       ; overrides the default meta description field, same as the --mestadesc args
 [JSpath]path                                        ; overrides the default path to the javascript folder, same as --jspath args
 [Assetspath]path                                    ; overrides the default path to the assets folder, same as --assetspath args
+[Grid]n                                             ; arrange all photos into pages of grids, each with 'n' photos
+[GlobalHeader=image.ext,percent]                    ; Use a single header image for all pages
 </Optional>
 
 [Timezone]±HHMM                                     ; Sets the timezone for the following sections / photos. Used to compare the Journal header

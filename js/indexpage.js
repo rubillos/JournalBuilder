@@ -131,7 +131,7 @@ if (indexPageLoaded == null) {
 		}
 		
 		if (screenWidth < 700) {
-			if (!panopage && document.body.style.display === "none") {
+			if (!panopage) {
 				if (!findID("content").hasAttribute("norewrap")) {
 					if (version >= 3) {
 						const picblocks = find("div.picblock");

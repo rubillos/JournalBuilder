@@ -370,11 +370,11 @@ if (moviePageLoaded == null) {
 				var prefix = document.location.href.includes("large") ? `large-${pageNumber}` : `index${pageNumber > 1 ? pageNumber : ""}`;
 
 				if (has4K && !loading4K) {
-					fourKPrompt.setAttribute("href", `${prefix}.html?4K`);
+					fourKPrompt?.setAttribute("href", `${prefix}.html?4K`);
 				} else {
-					fourKPrompt.closest("td")?.remove();
-					hdPrompt.closest("td")?.setAttribute("width", "100%");
-					fourKPrompt.closest(".grow")?.remove();
+					fourKPrompt?.closest("td")?.remove();
+					hdPrompt?.closest("td")?.setAttribute("width", "100%");
+					fourKPrompt?.closest(".grow")?.remove();
 				}
 
 				if (hasHD && !requestingHD) {
@@ -508,8 +508,13 @@ if (moviePageLoaded == null) {
 								.replace("2160p", "4K");
 							vidHeightElement.textContent = heightStr;
 						}
+						if (vidElement.videoHeight > vidElement.videoWidth) {
+							vidElement.classList.add("vidvert");
+						}
+						vidElement.controls = true;
 					}
 					
+					newVideo.removeAttribute("controls");
 					newVideo.addEventListener("loadedmetadata", function () {
 						var curSrc = newVideo.currentSrc;
 
@@ -696,9 +701,26 @@ if (moviePageLoaded == null) {
 					el.style.margin = "0 5px";
 				});
 
+				document.body.style.visibility = "hidden";
 				document.body.style.display = "inline";
-
 				findID("pagewrap")?.hide(false);
+
+				const headbar = document.getElementById("headbar");
+				const infobar = document.getElementById("infobar");
+				const photoblock = document.getElementById("photo");
+				if (photoblock) {
+					photoblock.style.backgroundColor = "";
+				}
+				const headbarHeight = headbar ? headbar.offsetHeight : 0;
+				const infobarHeight = infobar ? infobar.offsetHeight : 0;
+				const photoMargin = photoblock ? parseInt(window.getComputedStyle(photoblock).marginBottom, 10) : 0;
+				const vextra = `${headbarHeight + infobarHeight + photoMargin}px`;
+
+				document.querySelectorAll("video").forEach(video => {
+					video.style.setProperty("--vextra", vextra);
+				});
+
+				document.body.style.visibility = "visible";
 
 				const chapterSelect = findID("chapterselect");
 				if (chapterSelect) {

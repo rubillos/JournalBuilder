@@ -8,24 +8,25 @@
 	<style type="text/css" media="screen">
 		.hidden { display: none; }
 		#pagewrap { width: 1920px; max-width: 100%; }
-		video { max-width: 100%; height:auto; }
+		video { max-width: 100%; height:auto; --vextra: 0px; max-height: calc(100vh - var(--vextra)); }
+		.vidvert { height: calc(100vh - var(--vextra)); width: auto; margin: 0 auto; display: table; }
 	</style>
 </head>
 <body>
 	<div class="detail hidden" id="pagewrap">
-		<div class="row inset">
+		<div id="headbar" class="row inset">
 			<div id="previous"><a id="previousRef" href="_PreviousPageURL_">999</a></div>
 			<div class="grow"><a id="fourkprompt" href="_CurrentPageURL_?4K">Switch to 4K</a></div>
 			<div class="grow"><a id="hdprompt" href="_CurrentPageURL_?HD">Switch to 1080HD</a></div>
 			<div id="next"><a id="nextRef" href="_NextPageURL_">999</a></div>
 		</div>
 		<div id="content ">
-			<div id="photo" style="background-color: black;">
+			<div id="photo">
             	<video class="hidden" id="movie1" style="min-height: 540px" src="" controls autoplay width="960" height="540">Unsupported movie. Please use Safari or Chrome.</video>
             	<video class="hidden" id="movie2" style="min-height: 360px" src="" controls autoplay width="640" height="360">Unsupported movie. Please use Safari or Chrome.</video>
             </div>
 		</div>
-		<div class="row inset">
+		<div id="infobar" class="row inset">
 			<div id="current">999</div>
 			<div id="index"><a href="index.html">Index</a></div>
 		</div>
