@@ -28,7 +28,7 @@ Below is the layout for the journal.txt file
 [GlobalHeader=image.ext,percent]                    ; Use a single header image for all pages
 </Optional>
 
-[Timezone]±HHMM                                     ; Sets the timezone for the following sections / photos. Used to compare the Journal header
+[Timezone=±HHMM]                                    ; Sets the timezone for the following sections / photos. Used to compare the Journal header
                                                     ; and Timestamp tags with UTC, and to correct the exif display of photo times from UTC. Can have
                                                     ; more than one per journal.  Defaults to -0700.
 
