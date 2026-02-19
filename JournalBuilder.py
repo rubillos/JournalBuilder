@@ -171,10 +171,20 @@ date_formats = [date_format, "%Y:%m:%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d", 
 
 register_heif_opener(thumbnails=False)
 
+console_mid_line = False
+
 def print_now(str):
+	global console_mid_line
 	console.print(str, end="")
+	console_mid_line = True
+
+def print_cr(*args):
+	global console_mid_line
+	console.print(*args)
+	console_mid_line = False
 
 def print_error(*args, dest_console=console):
+	global console_mid_line
 	message = args[0] if len(args) >= 1 else None
 	item = args[1] if len(args) >= 2 else None
 	error_message = args[2] if len(args) >= 3 else None
@@ -198,6 +208,9 @@ def print_error(*args, dest_console=console):
 			parts.extend([error_color, " - "]) 
 		parts.extend([error_message_color, error_message]) 
 
+	if dest_console == console and console_mid_line:
+		console.print()
+		console_mid_line = False
 	dest_console.print("".join(parts))
 
 def createFolder(path):
@@ -207,7 +220,7 @@ def createFolder(path):
 		os.makedirs(path, exist_ok=True)
 		return True
 	except OSError as e:
-		console.print(f"Error creating folder '{path}': {e}")
+		print_cr(f"Error creating folder '{path}': {e}")
 		return False
 	
 def open_image_file(file_ref):
@@ -988,7 +1001,7 @@ def findDifferences(text_lines, original_journal):
 							extended_line = True
 
 	if len(text_lines) != len(html_lines):
-		parser.error("Find Differences Error: line counts differ - journal:{} vs html:{}".format(len(text_lines)), len(html_lines))
+		parser.error("Find Differences Error: line counts differ - journal:{} vs html:{}".format(len(text_lines), len(html_lines)))
 
 	diff_count = 0
 
@@ -1116,11 +1129,16 @@ def main():
 					return i
 			return len(folder_scales)
 
-		print_now("Retrieving photo metadata...")
+		print_now("Retrieving photo metadata... ")
 		for file_name, file_path, title, photo_date, photo_width, photo_height in file_paths:
 			try:
 				with open(file_path, "rb") as image_file:
-					tags = exifread.process_file(image_file, details=False)
+					try:
+						tags = exifread.process_file(image_file, details=False)
+					except Exception as e:
+						print_error("Error processing EXIF data for file: ", file_name, e)
+						tags = {}
+
 					keys = tags.keys()
 					image_ref = {}
 
@@ -1197,8 +1215,8 @@ def main():
 					image_ref["exif"] = " &bull; ".join(exif_data)
 					unplaced_image_refs.append(image_ref)
 			except OSError as e:
-				print("Error opening file:", file_path, file_name, e)
-		console.print(" done.")
+				print_error("Error opening file: ", file_path, file_name, e)
+		print_cr("done.")
 
 		file_scan_time = time.time() - file_scan_start
 
@@ -1418,14 +1436,14 @@ def main():
 		if not header_ref:
 			if first_photos and len(first_photos)>0:
 				page_headers[page_index] = (first_photos[0], header_offset, page_num)
-			if page_index == len(pages)-1:
+			if last_photos and len(last_photos)>0 and page_index == len(pages)-1:
 				page_headers[page_index] = (last_photos[-1], header_offset, page_num)
 	
 	# re-order thumbnails slightly to minimize page height
 	if args.reorder_thumbs:
-		print_now("Rearranging photos...")
+		print_now("Rearranging photos... ")
 		rearrange(pages)
-		console.print(" done.")
+		print_cr("done.")
 
 	# split any giant blocks of pics if we have multiple paragraphs above
 	if not args.dont_split:
@@ -1494,7 +1512,7 @@ def main():
 
 	# clean existing output files
 	if args.clean or args.clean_html or args.clean_images or args.clean_headers:
-		print_now("Cleaning destination folder...")
+		print_now("Cleaning destination folder... ")
 		folders_removed = 0
 		files_removed = 0
 		for name in os.listdir(destination_folder):
@@ -1523,9 +1541,9 @@ def main():
 				shutil.rmtree(path)
 				folders_removed += 1
 		if files_removed>0 or folders_removed>0:
-			console.print(" removed {} and {}.".format(pluralize("folder", folders_removed), pluralize("file", files_removed)))
+			print_cr("removed {} and {}.".format(pluralize("folder", folders_removed), pluralize("file", files_removed)))
 		else:
-			console.print(" done.")
+			print_cr("done.")
 
 	folder_list = []
 	if args.assets_path == "assets":
@@ -1540,13 +1558,13 @@ def main():
 		if os.path.isdir(dest_assets_path):
 			shutil.rmtree(dest_assets_path)
 		if not os.path.isdir(dest_assets_path):
-			print_now("Copying " + folder_name + " folder...")
+			print_now("Copying " + folder_name + " folder... ")
 			src_assets_path = os.path.join(script_path, folder_name)
 			try:
 				shutil.copytree(src_assets_path, dest_assets_path)
-				console.print(" done.")
+				print_cr("done.")
 			except OSError as e:
-				print_error("\nError copying: ", dest_assets_path, e)
+				print_error("Error copying: ", dest_assets_path, e)
 
 	#save movies.txt
 	movie_file_path = os.path.join(destination_folder, "movies.txt")
@@ -1554,7 +1572,7 @@ def main():
 		for index, movie_ref in enumerate(movie_refs):
 			movie_refs[index] = "{}\t0\t1.0\t{}\n".format(movie_ref["picture_num"], movie_ref["movie_text"])
 		movie_refs.insert(0, "{:d},1\n".format(len(final_image_refs)))
-		console.print("Creating movies.txt")
+		print_cr("Creating movies.txt")
 		try:
 			with open(movie_file_path, "w") as file:
 				file.writelines(movie_refs)
@@ -1565,7 +1583,7 @@ def main():
 	image_rate = 0
 
 	# make header folder
-	os.mkdir(os.path.join(destination_folder, header_folder_root))
+	os.makedirs(os.path.join(destination_folder, header_folder_root), exist_ok=True)
 
 	image_count = len(final_image_refs)
 	if image_count>0:
@@ -1579,12 +1597,12 @@ def main():
 			dest_path = os.path.join(destination_folder, folder_name)
 			if not os.path.isdir(dest_path):
 				if not create_start:
-					print_now("Creating folders")
+					print_now("Creating folders ")
 					create_start = True
 				print_now(".")
 				os.mkdir(dest_path)
 		if create_start:
-			console.print(" done.")
+			print_cr("done.")
 		
 		# resize images
 		version_data = {
@@ -1666,9 +1684,9 @@ def main():
 			index = 0
 			if len(futures)>0:
 				for future in concurrent.futures.as_completed(futures, timeout=None):
+					result, error_msg, new_keys, ref_index = future.result()
 					if future.exception():
 						print_error("Image scaling exception: ", final_image_refs[ref_index]["file_name"], future.exception(), dest_console=progress.console)
-					result, error_msg, new_keys, ref_index = future.result()
 					if new_keys:
 						if args.timings:
 							accumulate_timing(new_keys, image_timing)
@@ -1684,7 +1702,7 @@ def main():
 
 			progress.update(task, refresh=True, color="conceal")
 
-	console.print(f"Generated {completed_count} images")
+	print_cr(f"Generated {completed_count} images")
 
 	image_process_time = time.time() - image_process_start
 	html_generate_start = time.time()
@@ -1910,12 +1928,12 @@ def main():
 		add_timing_stat("Total Time:", total_time)
 		add_timing_stat("Image Rate:", image_rate, format="{:<22}  [bright_green]{:5.1f} ips[/]")
 
-		console.print()
-		console.print(Panel.fit("\n".join(timing_stats), title="Timing Summary"))
+		print_cr()
+		print_cr(Panel.fit("\n".join(timing_stats), title="Timing Summary"))
 
 	if args.no_cache:
-		console.print()
-		console.print(Panel.fit(Padding("[dark_orange]WARNING: Image caching is disabled in output files!", (0,4))))
+		print_cr()
+		print_cr(Panel.fit(Padding("[dark_orange]WARNING: Image caching is disabled in output files!", (0,4))))
 
 	if args.open_result:
 		dest_url = "file://" + os.path.join(destination_folder, index_url(1, for_html=False))
@@ -1971,7 +1989,7 @@ if __name__ == '__main__':
 			# executor = concurrent.futures.ThreadPoolExecutor()
 			executor = concurrent.futures.ProcessPoolExecutor()
 
-		console.print(Panel("[green]Begin JournalBuilder"))
+		print_cr(Panel("[green]Begin JournalBuilder"))
 
 		# prof = profile.Profile()
 		# prof.enable()
