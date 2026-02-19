@@ -4,7 +4,7 @@
 # pip install cryptography
 # pip install pillow_heif
 # pip install rich
-# pip install "exifread<3"
+# pip install exifread
 # pip install Pillow
 
 # import cProfile as profile
@@ -476,7 +476,7 @@ def extract_section(lines, starttext, endtext=None):
 		return (start_index, lines.pop(start_index))
 
 def pluralize(str, count, pad=False):
-	return "{:d} {}{}".format(count, str, "s" if count!=1 else " " if pad else "")
+	return f"{count:d} {str}{'s' if count != 1 else ' ' if pad else ''}"
 
 def extract_up_to(text, substr):
 	src_text = text
@@ -491,7 +491,7 @@ def extract_up_to(text, substr):
 
 def cache_suffix(for_html=True):
 	if for_html and args.no_cache:
-		return "?{:d}".format(int((time.time() * 10000) % 10000))
+		return f"?{int((time.time() * 10000) % 10000):d}"
 	else:
 		return ""
 
@@ -500,16 +500,16 @@ def index_url(index_num, for_html=True):
 	if index_num <= 0:
 		return previous_external_url if previous_external_url else None
 	elif index_num == 1:
-		return "{}.html{}".format(index_root, cache_suffix(for_html))
+		return f"{index_root}.html{cache_suffix(for_html)}"
 	elif index_num == page_count:
-		return "{}last.html{}".format(index_root, cache_suffix(for_html))
+		return f"{index_root}last.html{cache_suffix(for_html)}"
 	elif index_num >= page_count+1:
 		return next_external_url if next_external_url else None
 	else:
-		return "{}{}.html{}".format(index_root, index_num, cache_suffix(for_html))
+		return f"{index_root}{index_num}.html{cache_suffix(for_html)}"
 
 def detail_url(picture_number):
-	return("{}{}.html".format(detail_root, picture_number))
+	return f"{detail_root}{picture_number}.html"
 
 def top_link_name(caption):
 	if "[" in caption and "]" in caption:
@@ -545,13 +545,14 @@ def top_link_url(caption, datestring):
 		url = url + date + "_"
 	url = url + page
 	url = url.replace(" ", "_")
-	return("{}/index.html".format(url))
+	return(f"{url}/index.html")
 
 def header_image_url(page_num, for_html=True, suffix=""):
-	return "{}/{}{:d}{}.jpg{}".format(header_folder_root, header_name_root, page_num, suffix, cache_suffix(for_html))
+	return f"{header_folder_root}/{header_name_root}{page_num:d}{suffix}.jpg{cache_suffix(for_html)}"
+	r
 
 def picture_url(name_root, page_num, for_html=True):
-	return "{}{}.jpg{}".format(name_root, page_num, cache_suffix(for_html))
+	return f"{name_root}{page_num}.jpg{cache_suffix(for_html)}"
 
 def make_nav_bar(nav_lines, page_index):
 	page_count = len(page_names)
@@ -615,10 +616,10 @@ def make_photo_block(photo_lines, image_refs):
 			caption = html.escape(image_ref["date_string"])
 		elif args.aspect_as_captions:
 			if "block_index" in image_ref:
-				caption = "{:1.2f}, #{}".format(image_ref["aspect"], image_ref["block_index"])
+				caption = f"{image_ref['aspect']:1.2f}, #{image_ref['block_index']}"
 			else:
-				caption = "{:1.2f}".format(image_ref["aspect"])
-			caption = "{}, {}".format("Tall" if image_ref["tall"] else "Wide", caption)
+				caption = f"{image_ref['aspect']:1.2f}"
+			caption = f"{'Tall' if image_ref['tall'] else 'Wide'}, {caption}"
 		elif "caption" in image_ref:
 			caption = html.escape(image_ref["caption"])
 
@@ -795,7 +796,7 @@ def rearrange(pages):
 
 				for index, photo in enumerate(photos):
 					if index != photo["block_index"]:
-						photo["block_index"] = "<b>{}*</b>".format(photo["block_index"])
+						photo["block_index"] = f"<b>{photo['block_index']}*</b>"
 
 def scan_header(journal, date_overrides):
 	global previous_external_url
@@ -944,9 +945,9 @@ def createNewJournal():
 		index = 1
 		while index<100 and not did_rename:
 			if index == 1:
-				new_stem = "{} copy".format(stem)
+				new_stem = f"{stem} copy"
 			else:
-				new_stem = "{} copy {}".format(stem, index)
+				new_stem = f"{stem} copy {index}"
 			rename_path = path.with_stem(new_stem)
 
 			if not rename_path.exists():
@@ -1001,7 +1002,7 @@ def findDifferences(text_lines, original_journal):
 							extended_line = True
 
 	if len(text_lines) != len(html_lines):
-		parser.error("Find Differences Error: line counts differ - journal:{} vs html:{}".format(len(text_lines), len(html_lines)))
+		parser.error(f"Find Differences Error: line counts differ - journal:{len(text_lines)} vs html:{len(html_lines)}")
 
 	diff_count = 0
 
@@ -1058,7 +1059,7 @@ def findDifferences(text_lines, original_journal):
 
 				if diff_count == 1:
 					console.print("HTML files have been modified:")
-				console.print("Line {}: \"...{}...\" changed to \"...{}...\"".format(line_number+1, text_line[a:a+sizea], html_line[b:b+sizeb]))
+				console.print(f"Line {line_number+1}: \"...{text_line[a:a+sizea]}...\" changed to \"...{html_line[b:b+sizeb]}...\"")
 		
 	if diff_count > 0 and args.output_journal:
 		console.print("Creating updated journal (any existing file will be renamed)")
@@ -1189,26 +1190,26 @@ def main():
 
 					def format_shutter(speed):
 						if speed <= 0.5:
-							return "1/{:d}s".format(int(1.0 / speed))
+							return f"1/{int(1.0 / speed):d}s"
 						else:
-							return "{:.1f}s".format(speed)
+							return f"{speed:.1f}s"
 
 					def format_ev(bias):
 						if abs(bias) <= 0.1:
 							return "0ev"
 						else:
-							return "{:+.1f}ev".format(bias)
+							return f"{bias:+.1f}ev"
 
 					if 'EXIF ExposureTime' in keys:
 						exif_data.append(format_shutter(float(tags['EXIF ExposureTime'].values[0])))
 					if 'EXIF FNumber' in keys:
-						exif_data.append("ƒ{:.1f}".format(float(tags['EXIF FNumber'].values[0])))
+						exif_data.append(f"ƒ{float(tags['EXIF FNumber'].values[0]):.1f}")
 					if 'EXIF ExposureBiasValue' in keys:
 						exif_data.append(format_ev(float(tags['EXIF ExposureBiasValue'].values[0])))
 					if 'EXIF ISOSpeedRatings' in keys:
-						exif_data.append("ISO {:d}".format(tags['EXIF ISOSpeedRatings'].values[0]))
+						exif_data.append(f"ISO {tags['EXIF ISOSpeedRatings'].values[0]:d}")
 					if 'EXIF FocalLengthIn35mmFilm' in keys:
-						exif_data.append("{:d}mm".format(tags['EXIF FocalLengthIn35mmFilm'].values[0]))
+						exif_data.append(f"{tags['EXIF FocalLengthIn35mmFilm'].values[0]:d}mm")
 					if 'Image Model' in keys:
 						exif_data.append(tags['Image Model'].values)
 						
@@ -1354,7 +1355,7 @@ def main():
 						valid_sizes = [(960, 540, 4), (640, 480, 4), (1280, 720, 5), (720, 1280, 5), (1920, 1080, 5), (1080, 1920, 5), (3840, 2160, 9), (2160, 3840, 9), (640, 360, 6)]
 						for width, height, index in valid_sizes:
 							if height in heights:
-								movie_fields[index if len(heights) > 1 else 4] = "{:d},{:d},{}".format(width, height, heights[height])
+								movie_fields[index if len(heights) > 1 else 4] = f"{width:d},{height:d},{heights[height]}"
 
 						movie_fields[3] = caption
 						movie_fields[8] = "*"
@@ -1362,7 +1363,7 @@ def main():
 						std_parts = movie_fields[4].split(",")
 						std_parts[2] = std_parts[2].replace("H", "-HEVC")
 						ext_index = movie_base.find(".")
-						movie_fields[4] = "{},{},{}-{}p{}{}".format(std_parts[0], std_parts[1], movie_base[:ext_index], std_parts[1], std_parts[2], movie_base[ext_index:])
+						movie_fields[4] = f"{std_parts[0]},{std_parts[1]},{movie_base[:ext_index]}-{std_parts[1]}p{std_parts[2]}{movie_base[ext_index:]}"
 
 						movie_ref["movie_text"] = "\t".join(movie_fields[3:])
 						movie_ref["caption"] = caption
@@ -1541,7 +1542,7 @@ def main():
 				shutil.rmtree(path)
 				folders_removed += 1
 		if files_removed>0 or folders_removed>0:
-			print_cr("removed {} and {}.".format(pluralize("folder", folders_removed), pluralize("file", files_removed)))
+			print_cr(f"removed {pluralize('folder', folders_removed)} and {pluralize('file', files_removed)}.")
 		else:
 			print_cr("done.")
 
@@ -1570,8 +1571,8 @@ def main():
 	movie_file_path = os.path.join(destination_folder, "movies.txt")
 	if not os.path.isfile(movie_file_path):
 		for index, movie_ref in enumerate(movie_refs):
-			movie_refs[index] = "{}\t0\t1.0\t{}\n".format(movie_ref["picture_num"], movie_ref["movie_text"])
-		movie_refs.insert(0, "{:d},1\n".format(len(final_image_refs)))
+			movie_refs[index] = f"{movie_ref['picture_num']}\t0\t1.0\t{movie_ref['movie_text']}\n"
+		movie_refs.insert(0, f"{len(final_image_refs):d},1\n")
 		print_cr("Creating movies.txt")
 		try:
 			with open(movie_file_path, "w") as file:
@@ -1640,10 +1641,10 @@ def main():
 				if elapsed is None:
 					return Text("--s", style="progress.elapsed")
 				else:
-					return Text("{:3.1f}s".format(elapsed), style="bright_cyan")
+					return Text(f"{elapsed:3.1f}s", style="bright_cyan")
 
 		with Progress(prog_description, BarColumn(), prog_percentage, StyledElapsedColumn(), prog_rate, console=console) as progress:
-			task = progress.add_task("Creating images for {}".format(pluralize("photo", image_count)), total=image_count, ips=0, color="conceal")
+			task = progress.add_task(f"Creating images for {pluralize('photo', image_count)}", total=image_count, ips=0, color="conceal")
 			futures = []
 			image_process_start = time.time()
 			completed_count = 0
@@ -1714,7 +1715,7 @@ def main():
 	detail_count = len(final_image_refs)
 	if detail_count>0 and not args.top_index:
 		with Progress(prog_description, BarColumn(), prog_percentage, console=console) as progress:
-			task = progress.add_task("Creating {}".format(pluralize("detail page", detail_count)), total=detail_count)
+			task = progress.add_task(f"Creating {pluralize('detail page', detail_count)}", total=detail_count)
 			with open(os.path.join(script_path, "detail.html"), "r") as file:
 				detail_lines = file.readlines()
 			with open(os.path.join(script_path, "movie.html"), "r") as file:
@@ -1759,7 +1760,7 @@ def main():
 				exif = [image_ref["file_name"], local_date.strftime(date_format), image_ref["exif"]]
 				exif_text = " &bull; ".join(exif)
 				if "caption" in image_ref:
-					exif_text += "<br>{}".format(image_ref["caption"])
+					exif_text += f"<br>{image_ref['caption']}"
 				replace_key(new_detail_lines, "_EXIF_", exif_text)
 			
 				replace_key(new_detail_lines, "_Copyright_", copyright_html)
@@ -1802,7 +1803,7 @@ def main():
 		image_index, image_line = extract_section(index_lines, "imageitem")
 		
 		with Progress(prog_description, BarColumn(), prog_percentage, console=console) as progress:
-			task = progress.add_task("Creating {}".format(pluralize("index page", page_count)), total=page_count)
+			task = progress.add_task(f"Creating {pluralize('index page', page_count)}", total=page_count)
 
 			for page_index, page in enumerate(pages, 1):
 				new_index_lines = index_lines.copy()
@@ -1923,7 +1924,7 @@ def main():
 				add_timing_stat("  " + title, image_timing[key])
 				cumulative_time += image_timing[key]
 			if not args.single_thread:
-				add_timing_stat("  Proc time ({:.1f}x):".format(cumulative_time / image_process_time), cumulative_time)
+				add_timing_stat(f"  Proc time ({cumulative_time / image_process_time:.1f}x):", cumulative_time)
 		add_timing_stat("HTML Generation:", html_generate_time)
 		add_timing_stat("Total Time:", total_time)
 		add_timing_stat("Image Rate:", image_rate, format="{:<22}  [bright_green]{:5.1f} ips[/]")
