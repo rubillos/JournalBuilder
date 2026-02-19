@@ -43,7 +43,8 @@
                 // "-dr",
                 // "/Users/randy/Sites/PortlandAve/fredandkatie/Gallery",
                 // "/Users/randy/Sites/PortlandAve/travel/2025-06-26-Canada",
-                "/Users/randy/Sites/PortlandAve/travel/2025-10-02-MagicMountain",
+                // "/Users/randy/Sites/PortlandAve/travel/2025-10-02-MagicMountain",
+                "/Users/randy/Sites/PortlandAve/travel/2026-01-25-OregonCoast2",
                 // "/Users/randy/Sites/PortlandAve/Local/2025-03-13-MennoJeroen",
                 // "/Users/randy/Sites/PortlandAve/travel/2025-05-09-JuliaPortugal",
                 // "/Users/randy/Sites/PortlandAve/travel/2024-06-25-VancouverIsland3",
@@ -58,7 +59,7 @@
                 // "-a",
                 // "2021-05-27 Russ & Justin",
                 // "-f",
-                // "-t"
+                "-t"
 
                 // "/Users/randy/Sites/PortlandAve/travel/2022-02-21-Iceland",
                 // "/Users/randy/Sites/PortlandAve/travel/Test1",
