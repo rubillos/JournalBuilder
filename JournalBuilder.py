@@ -7,9 +7,6 @@
 # pip install exifread
 # pip install Pillow
 
-# import cProfile as profile
-# import pstats
-
 import sys, os, time, shutil
 import argparse
 from datetime import datetime, timedelta, timezone
@@ -40,6 +37,7 @@ parser.add_argument("-x", "--express", dest="express", help="Express mode - one 
 parser.add_argument("-xx", "--extraexpress", dest="extraexpress", help="Extra Express mode - one file per image, only generate thumbnails", action="store_true")
 parser.add_argument("-b", "--browser", dest="open_result", help="Open output journal in browser", action="store_true")
 parser.add_argument("-gr", "--grid", dest="grid_count", help="Create grid pages with n photos per page.", type=int, default=0)
+parser.add_argument("-ha", "--header_adjust", dest="header_adjust", help="Enable header image adjustment.", action="store_true")
 
 group = parser.add_argument_group("cleaning")
 group.add_argument("-c", "--clean", dest="clean", help="Remove all existing output files", action="store_true")
@@ -610,6 +608,9 @@ def make_photo_block(photo_lines, image_refs):
 
 		replace_key(new_image_lines, "_ThumbWidth_", str(new_size[0]))
 		replace_key(new_image_lines, "_ThumbHeight_", str(new_size[1]))
+
+		if args.header_adjust:
+			replace_key(new_image_lines, "filename=", f"picname=\"{image_ref['file_name']}\" filename=")
 		
 		caption = None
 		if args.dates_as_captions:
@@ -1821,6 +1822,9 @@ def main():
 
 				header_ref, header_offset, page_num = page_headers[page_index-1]
 				if header_ref != None:
+					if args.header_adjust and "picture_num" in header_ref:
+						replace_key(new_index_lines, "sizes=", f"picnum=\"{header_ref['picture_num']}\" hoffset=\"{header_offset}\" sizes=")
+						replace_key(new_index_lines, "filename=", f"picname=\"{header_ref['file_name']}\" filename=")
 					replace_key(new_index_lines, "_HeaderSizes_", str(header_ref["folder_count"]))
 				else:
 					replace_key(new_index_lines, 'sizes="_HeaderSizes_" ', "")
@@ -1992,15 +1996,4 @@ if __name__ == '__main__':
 
 		print_cr(Panel("[green]Begin JournalBuilder"))
 
-		# prof = profile.Profile()
-		# prof.enable()
-
 		main()
-
-		# prof.disable()
-
-		# stats = pstats.Stats(prof).strip_dirs().sort_stats("tottime")
-		# stats.print_stats(40)
-
-		# import profile
-		# profile.run('main()')

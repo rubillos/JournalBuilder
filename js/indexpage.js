@@ -687,15 +687,131 @@ if (indexPageLoaded == null) {
 
 		const headerImg = findOne("#headerImg");
 		if (headerImg) {
-			headerImg.addEventListener("mousedown", function (e) {
-				const leftSide = e.offsetX < (this.offsetWidth * 0.2);
-				const target = findOne(leftSide ? "#previous a, .previous a" : "#next > a, .next a");
-				if (target) {
-					window.location.href = target.getAttribute("href");
-				}
-			});
-		}
+			const imgElement = headerImg.querySelector("img");
+			const picIndex = imgElement ? imgElement.getAttribute("picnum") : null;
+			
+			if (picIndex) {
+				headerImg.style.width = imgElement.style.width;
+				headerImg.style.height = imgElement.style.height;
+				headerImg.style.overflow = "hidden";
+				headerImg.style.position = "relative";
+				
+				const popup = document.createElement("span");
+				popup.textContent = "Copied file and offset to clipboard";
+				popup.className = "copy-msg";
+				headerImg.appendChild(popup);
 
+				function copyToClipboard(e) {
+					const fileData = fileDisplay.getAttribute("copy-data");
+					const offsetData = offsetDisplay.getAttribute("copy-data");
+					if (fileData && offsetData) {
+						navigator.clipboard.writeText(`${fileData},${offsetData}`);
+					}
+					popup.style.display = "block";
+					setTimeout(() => { popup.style.display = "none"; }, 700);
+					e.stopPropagation();
+				}
+				
+				const fileDisplay = document.createElement("div");
+				fileDisplay.className = "header-info";
+				fileDisplay.style.left = "10px";
+				headerImg.appendChild(fileDisplay);
+				fileDisplay.addEventListener("click", copyToClipboard);
+				
+				function updateFileDisplay(index, filename) {
+					if (fileDisplay) {
+						imgElement.src = `pictures/picture-${index}.jpg`;
+						fileDisplay.textContent = `file: "${filename}"`;
+						fileDisplay.setAttribute("copy-data", filename);
+					}
+				}
+					
+				const offsetDisplay = document.createElement("div");
+				offsetDisplay.className = "header-info";
+				offsetDisplay.style.right = "10px";
+				headerImg.appendChild(offsetDisplay);
+				offsetDisplay.addEventListener("click", copyToClipboard);
+				
+				function updateOffsetDisplay() {
+					const offset = parseInt(imgElement.getAttribute("hoffset"), 10) || 50;
+					offsetDisplay.textContent = `offset: ${offset}%`;
+					offsetDisplay.setAttribute("copy-data", offset);
+				}
+			
+				updateOffsetDisplay();
+				
+				imgElement.removeAttribute("height");
+				imgElement.style.height = "";
+
+				imgElement.onload = function() {
+					const hoffset = parseInt(imgElement.getAttribute("hoffset"), 10) || 50;
+					imgElement.style.marginTop = `-${Math.round((imgElement.height - headerImg.offsetHeight) * hoffset / 100)}px`;
+				};
+
+				imgElement.removeAttribute("srcset");
+				imgElement.removeAttribute("sizes");
+				updateFileDisplay(picIndex, imgElement.getAttribute("picname") || "");
+
+				let isDragging = false;
+				let startY = 0;
+				let startMarginTop = 0;
+				
+				headerImg.addEventListener("mousedown", function(e) {
+					isDragging = true;
+					startY = e.clientY;
+					startMarginTop = parseInt(imgElement.style.marginTop) || 0;
+					e.preventDefault();
+				});
+				
+				document.addEventListener("mousemove", function(e) {
+					if (isDragging) {
+						const deltaY = e.clientY - startY;
+						const newMarginTop = startMarginTop + deltaY;
+						const maxOffset = -(imgElement.height - headerImg.offsetHeight);
+						const clampedMarginTop = Math.max(maxOffset, Math.min(0, newMarginTop));
+						
+						imgElement.style.marginTop = `${clampedMarginTop}px`;
+						imgElement.setAttribute("hoffset", Math.round((-clampedMarginTop / (imgElement.height - headerImg.offsetHeight)) * 100));
+						updateOffsetDisplay();
+						e.preventDefault();
+					}
+				});
+				
+				document.addEventListener("mouseup", function(e) {
+					isDragging = false;
+				});
+				
+				find(".imagewrapper").forEach(wrapper => {
+					const img = wrapper.querySelector("img");
+					img.addEventListener("mousedown", function(e) {
+						if (e.shiftKey) {
+							e.preventDefault();
+							e.stopPropagation();
+							const filename = this.getAttribute("filename");
+							const match = filename.match(/thumb-(\d+)/);
+							if (match && match[1]) {
+								updateFileDisplay(match[1], img.getAttribute("picname") || "");
+							}
+						}
+					});
+					
+					wrapper.addEventListener("click", function(e) {
+						if (e.shiftKey) {
+							e.preventDefault();
+							e.stopPropagation();
+						}
+					});
+				});
+			} else {
+				headerImg.addEventListener("mousedown", function (e) {
+					const leftSide = e.offsetX < (this.offsetWidth * 0.2);
+					const target = findOne(leftSide ? "#previous a, .previous a" : "#next > a, .next a");
+					if (target) {
+						window.location.href = target.getAttribute("href");
+					}
+				});
+			}
+		}
 		if (version < 2 && !Array.from(document.querySelectorAll("a")).some(a => a.textContent.includes("Next Page"))) {
 			const nextElement = findOne("#next a, .next a");
 			if (nextElement) {
