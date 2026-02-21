@@ -276,6 +276,7 @@ def save_versions(image_ref, ref_index, version_data, header_info, image_folders
 			image.save(file, "JPEG", quality=q, icc_profile=profile)
 
 	def save_scaled(image, size, path, sampling, profile):
+		# print_cr(f"Scaling from {image.size} to {size} -> {path}")
 		start_time = time.time()
 		scaled_image = image.resize(size, resample=sampling)
 		scaled_time = time.time()
@@ -345,7 +346,7 @@ def save_versions(image_ref, ref_index, version_data, header_info, image_folders
 					if do_timing:
 						timing_data["save_time"] += save_time
 						timing_data["scale_time"] += scale_time
-					if index!=-1:
+					if index!=-1 and large_images[index] is None:
 						large_images[index] = scaled_image
 					result = result + 1 if result>=0 else result
 				except OSError as e:
