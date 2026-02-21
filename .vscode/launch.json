@@ -39,7 +39,7 @@
 
                 "-nc",
                 "-c",
-                "-x",
+                // "-x",
                 "-ha",
                 // "-dr",
                 // "/Users/randy/Sites/PortlandAve/fredandkatie/Gallery",
