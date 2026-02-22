@@ -685,6 +685,15 @@ if (indexPageLoaded == null) {
 			});
 		}
 
+		function copyToClipboard(element, text) {
+			navigator.clipboard.writeText(text);
+			const popup = document.createElement("span");
+			popup.textContent = "Copied";
+			popup.className = "copy-msg";
+			element.appendChild(popup);
+			setTimeout(() => { popup.remove(); }, 700);
+		}
+
 		const headerImg = findOne("#headerImg");
 		if (headerImg) {
 			const imgElement = headerImg.querySelector("img");
@@ -696,27 +705,28 @@ if (indexPageLoaded == null) {
 				headerImg.style.overflow = "hidden";
 				headerImg.style.position = "relative";
 				
-				const popup = document.createElement("span");
-				popup.textContent = "Copied file and offset to clipboard";
-				popup.className = "copy-msg";
-				headerImg.appendChild(popup);
-
-				function copyToClipboard(e) {
+				const infoBox = document.createElement("div");
+				infoBox.className = "header-msg";
+				infoBox.innerHTML = `Click+drag: header offset<br>
+									Shift+Click: set header image<br>
+									Click file/offset: copy<br>
+									Option+Shift+Click thumbnail: copy`;
+				headerImg.appendChild(infoBox);
+				
+				function copyClick(e) {
 					const fileData = fileDisplay.getAttribute("copy-data");
 					const offsetData = offsetDisplay.getAttribute("copy-data");
 					if (fileData && offsetData) {
-						navigator.clipboard.writeText(`${fileData},${offsetData}`);
+						e.stopPropagation();
+						copyToClipboard(headerImg, `${fileData},${offsetData}`);
 					}
-					popup.style.display = "block";
-					setTimeout(() => { popup.style.display = "none"; }, 700);
-					e.stopPropagation();
 				}
-				
+
 				const fileDisplay = document.createElement("div");
 				fileDisplay.className = "header-info";
 				fileDisplay.style.left = "10px";
 				headerImg.appendChild(fileDisplay);
-				fileDisplay.addEventListener("click", copyToClipboard);
+				fileDisplay.addEventListener("click", copyClick);
 				
 				function updateFileDisplay(index, filename) {
 					if (fileDisplay) {
@@ -730,7 +740,7 @@ if (indexPageLoaded == null) {
 				offsetDisplay.className = "header-info";
 				offsetDisplay.style.right = "10px";
 				headerImg.appendChild(offsetDisplay);
-				offsetDisplay.addEventListener("click", copyToClipboard);
+				offsetDisplay.addEventListener("click", copyClick);
 				
 				function updateOffsetDisplay() {
 					const offset = parseInt(imgElement.getAttribute("hoffset"), 10) || 50;
@@ -783,24 +793,26 @@ if (indexPageLoaded == null) {
 				
 				find(".imagewrapper").forEach(wrapper => {
 					const img = wrapper.querySelector("img");
-					img.addEventListener("mousedown", function(e) {
-						if (e.shiftKey) {
-							e.preventDefault();
-							e.stopPropagation();
-							const filename = this.getAttribute("filename");
-							const match = filename.match(/thumb-(\d+)/);
-							if (match && match[1]) {
-								updateFileDisplay(match[1], img.getAttribute("picname") || "");
+					if (img.hasAttribute("picname")) {
+						img.addEventListener("click", function(e) {
+							if (e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey) {
+								e.preventDefault();
+								e.stopPropagation();
+								const outer = this.closest("a");
+								outer.parentElement.style.position = "relative";
+								copyToClipboard(outer, this.getAttribute("picname"));
 							}
-						}
-					});
-					
-					wrapper.addEventListener("click", function(e) {
-						if (e.shiftKey) {
-							e.preventDefault();
-							e.stopPropagation();
-						}
-					});
+							else if (e.shiftKey && !e.altKey && !e.ctrlKey && !e.metaKey) {
+								e.preventDefault();
+								e.stopPropagation();
+								const filename = this.getAttribute("filename");
+								const match = filename.match(/thumb-(\d+)/);
+								if (match && match[1]) {
+									updateFileDisplay(match[1], img.getAttribute("picname") || "");
+								}
+							}
+						});
+					}
 				});
 			} else {
 				headerImg.addEventListener("mousedown", function (e) {
