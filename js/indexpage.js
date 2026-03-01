@@ -889,32 +889,32 @@ if (indexPageLoaded == null) {
 			const nextPageLink = findID("nextpagelink");
 
 			switch (event.key) {
-				case "PageUp": /* page up */
-				case "ArrowLeft": /* left */
-				case "ArrowUp": /* up */
+				case "PageUp":
+				case "ArrowLeft":
+				case "ArrowUp":
 					if (newPageNumber > 1) {
 						newPageNumber--;
 					} else {
 						newPageNumber = -3;
 					}
 					break;
-				case "PageDown": /* page down */
-				case "ArrowRight": /* right */
-				case "ArrowDown": /* down */
+				case "PageDown":
+				case "ArrowRight":
+				case "ArrowDown":
 					if (newPageNumber < pageCount) {
 						newPageNumber++;
 					} else {
 						newPageNumber = -2;
 					}
 					break;
-				case "i": /* i */
+				case "i":
 					if (!event.altKey && !event.shiftKey && !event.ctrlKey) {
 						newPageNumber = -1;
 					} else {
 						handled = false;
 					}
 					break;
-				case " ": /* spacebar */
+				case " ":
 					if (scrolledToBottom() && (newPageNumber < pageCount || nextPageLink) && !findOne("#video,#movie1,#movie2")) {
 						newPageNumber++;
 					} else if (scrolledToBottom() && pageCount <= 1 && !findOne("#video,#movie1,#movie2")) {
