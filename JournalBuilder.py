@@ -77,7 +77,7 @@ group.add_argument("-jsp", "--jspath", dest="js_path", help="Path to javascript 
 group.add_argument("-ap", "--assetspath", dest="assets_path", help="Path to assets folder", type=str, default="assets")
 
 group = parser.add_mutually_exclusive_group()
-group.add_argument("-mt", "--maketemplate", dest="make_template", help="Template start and end dates: YYYY-MM-DD,YYYY-MM-DD | use -o to generate journal.txt", type=str, default=None)
+group.add_argument("-mt", "--maketemplate", dest="make_template", help="Optional: template start and end dates: YYYY-MM-DD,YYYY-MM-DD | use -o to generate journal.txt", type=str, nargs='?', const="", default=None)
 group.add_argument("-df", "--diff", dest="do_diff", help="Find differences in current HTML files, use -o generate new journal.txt", action="store_true")
 
 group = parser.add_argument_group("debugging")
@@ -1946,7 +1946,7 @@ def main():
 		webbrowser.open(dest_url)
 
 if __name__ == '__main__':
-	if args.make_template:
+	if args.make_template is not None:
 		start_date = None
 		end_date = None
 		dates = args.make_template.split(",")
@@ -1958,24 +1958,24 @@ if __name__ == '__main__':
 			else:
 				end_date = start_date
 		
+		if args.output_journal:
+			new_journal = createNewJournal()
+			original_stdout = sys.stdout
+			sys.stdout = new_journal
+
+		print("[Site]JournalName")
+		print("[Album]AlbumName")
+		print("[Year]"+str(args.year))
+		print("[Value=thumb_size]220")
+		print("[Value=header_height]280")
+		print()
+		print("[Page=HeaderImage.ext,offset]PageName")
+		print()
+		print("[Heading]Movies")
+		print("[Movie=ThumbImage.ext]Caption,XXX.m4v,(540,60H),(1080,60H),(360,30H),(2160,60H)")
+		print()
+
 		if start_date and end_date:
-			if args.output_journal:
-				new_journal = createNewJournal()
-				original_stdout = sys.stdout
-				sys.stdout = new_journal
-
-			print("[Site]JournalName")
-			print("[Album]AlbumName")
-			print("[Year]"+str(args.year))
-			print("[Value=thumb_size]220")
-			print("[Value=header_height]280")
-			print()
-			print("[Page=HeaderImage.ext,offset]PageName")
-			print()
-			print("[Heading]Movies")
-			print("[Movie=ThumbImage.ext]Caption,XXX.m4v,(540,60H),(1080,60H),(360,30H),(2160,60H)")
-			print()
-
 			while start_date <= end_date:
 				print(start_date.strftime("[Heading=%Y-%m-%d]%A - %B %-d, %Y	Location"))
 				print()
@@ -1984,11 +1984,9 @@ if __name__ == '__main__':
 			print()
 			print("[Epilog=HeaderImage.ext,offset]")
 
-			if args.output_journal:
-				new_journal.close()
-				sys.stdout = original_stdout
-		else:
-			parser.error("Template creation requires start date and end date: YYYY-MM-DD,YYYY-MM-DD")
+		if args.output_journal:
+			new_journal.close()
+			sys.stdout = original_stdout
 
 	else:
 		if not args.single_thread:
